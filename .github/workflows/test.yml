@@ -1,0 +1,45 @@
+name: Java bindings
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+        java: ['17', '21']
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: orchiddb-java
+      - name: Read compiler revision
+        id: core
+        shell: bash
+        run: echo "revision=$(cat orchiddb-java/native/CORE_REVISION)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: OrchidDB/OrchidDB
+          ref: ${{ steps.core.outputs.revision }}
+          path: orchiddb
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: orchiddb-java/pom.xml
+      - name: Install Rust
+        run: rustup toolchain install 1.93.1 --profile minimal && rustup default 1.93.1
+      - name: Verify Java API and native integration
+        working-directory: orchiddb-java
+        run: ./scripts/build.sh
+      - name: Ensure compiler does not link DuckDB
+        working-directory: orchiddb-java
+        shell: bash
+        run: |
+          cargo tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
+          if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi

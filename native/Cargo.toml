@@ -1,0 +1,17 @@
+[package]
+name = "orchiddb-java-native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "orchiddb_java"
+crate-type = ["cdylib"]
+
+[dependencies]
+orchiddb = { path = "../../orchiddb", default-features = false }
+jni = "0.21.1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[profile.dev]
+debug = 0
