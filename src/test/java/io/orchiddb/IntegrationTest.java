@@ -291,4 +291,35 @@ class IntegrationTest {
                     "MATCH (p:Person) WHERE p.name IN $names RETURN p.name",
                     Map.of("names", List.of())))));
   }
+
+  @Test
+  void edgePropertyAggregationKeepsGraphBindingIdentity() throws Exception {
+    try (var statement = connection.createStatement()) {
+      statement.execute("ALTER TABLE knows ADD COLUMN weight DOUBLE DEFAULT 1.5");
+    }
+    var mapping =
+        new GraphMapping(
+            MAPPING.nodes(),
+            List.of(
+                EdgeMapping.edge("KNOWS", KNOWS, "id", "src", "dst", "Person", "Person")
+                    .property("weight", "weight")));
+    var g =
+        new OrchidDB(
+                compiler,
+                PlanCache.none(),
+                JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection))
+            .graph(mapping);
+    try (var result =
+        g.query(
+            Query.cypher(
+                "MATCH (p:Person)-[r:KNOWS]->(:Person) RETURN p.name AS name, sum(r.weight) AS weight ORDER BY name"))) {
+      assertTrue(result.next());
+      assertEquals("Ada", result.get("name"));
+      assertEquals(1.5, result.get("weight"));
+      assertTrue(result.next());
+      assertEquals("Grace", result.get("name"));
+      assertEquals(1.5, result.get("weight"));
+      assertFalse(result.next());
+    }
+  }
 }
