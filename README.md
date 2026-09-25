@@ -1,5 +1,7 @@
 # OrchidDB for Java
 
+**Start here: [Runnable examples](examples/README.md)** — Gremlin, existing DuckDB connections, UDFs, SQL-only compilation, and multiple engines.
+
 Compile Cypher, Gremlin and mapped SPARQL queries to SQL, then execute them on **your existing database connection**. This library contains no DuckDB database, driver, connection pool, SQLg layer, or result cache. Its JNI library contains the OrchidDB compiler, built with `default-features = false`.
 
 The application owns the engine: choose your DuckDB JDBC version, configure extensions and Iceberg credentials, register UDFs, configure caching, and decide when to commit. OrchidDB reads source metadata and runs the generated SELECT on the **same connection**, including temporary tables and functions. It never reopens a JDBC URL or rebuilds your views.
