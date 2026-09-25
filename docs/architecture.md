@@ -32,3 +32,17 @@ The compiler/executor separation is appropriate for an embedded graph query libr
 ## Evidence
 
 Tests execute against a caller-owned DuckDB session, compare native Java Gremlin results with TinkerGraph, cover lease/transaction ownership and cache invalidation, and compile with no DuckDB runtime dependency. A separate fresh-JVM check uses packaged API/native JARs only and rejects mismatched version, core revision and checksum metadata. The release workflow repeats integration and artifact checks on every release platform; configuring that workflow does not imply it has already run on every platform.
+
+## Arrow execution boundary
+
+`Session.executeArrow` is the batch extension point, with `Session.execute` as a
+row convenience for Arrow adapters. `Graph.queryArrow` couples a result to its
+session lease. JDBC adapters explicitly accept an application-supplied exporter
+and allocator; no DuckDB classes are imported by the production API. Drivers that
+cannot export Arrow must reject batch execution rather than silently convert rows.
+Arrow results own query resources and child allocators; connections, pools and
+parent allocators retain caller ownership. See [Arrow contracts](arrow.md).
+
+Arrow vectors are now a public API dependency. DuckDB JDBC, Arrow's C Data bridge
+and the test allocator remain test dependencies. The existing SQL-only compiler
+and JNI transport have no result-data responsibility.

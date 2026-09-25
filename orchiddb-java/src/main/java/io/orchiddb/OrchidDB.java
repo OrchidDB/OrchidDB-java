@@ -2,6 +2,9 @@ package io.orchiddb;
 
 import java.sql.SQLException;
 import java.util.*;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.apache.arrow.vector.types.pojo.Schema;
 
 /** Immutable engine registry. Owns no engines, pools or connections. */
 public final class OrchidDB {
@@ -67,6 +70,63 @@ public final class OrchidDB {
       }
     }
 
+    /** Primary bulk API. Close the result before closing its caller-owned allocator. */
+    public ArrowResult queryArrow(Query query) throws SQLException {
+      var session = engine.openSession();
+      try {
+        var result = session.executeArrow(compile(session, query));
+        return new ArrowResult() {
+          private boolean closed;
+
+          private void checkOpen() throws SQLException {
+            if (closed) throw new SQLException("Arrow result is closed");
+          }
+
+          public Schema schema() throws SQLException {
+            checkOpen();
+            return result.schema();
+          }
+
+          public DictionaryProvider dictionaries() throws SQLException {
+            checkOpen();
+            return result.dictionaries();
+          }
+
+          public VectorSchemaRoot batch() throws SQLException {
+            checkOpen();
+            return result.batch();
+          }
+
+          public boolean nextBatch() throws SQLException {
+            checkOpen();
+            try {
+              return result.nextBatch();
+            } catch (SQLException | RuntimeException | Error e) {
+              try {
+                close();
+              } catch (Throwable cleanup) {
+                e.addSuppressed(cleanup);
+              }
+              throw e;
+            }
+          }
+
+          public void close() throws SQLException {
+            if (closed) return;
+            closed = true;
+            ResultResources.close(result, session);
+          }
+        };
+      } catch (SQLException | RuntimeException | Error e) {
+        try {
+          session.close();
+        } catch (Throwable cleanup) {
+          e.addSuppressed(cleanup);
+        }
+        throw e;
+      }
+    }
+
     public QueryResult query(Query query) throws SQLException {
       var session = engine.openSession();
       try {
@@ -79,7 +139,16 @@ public final class OrchidDB {
           }
 
           public boolean next() throws SQLException {
-            return result.next();
+            try {
+              return result.next();
+            } catch (SQLException | RuntimeException | Error e) {
+              try {
+                close();
+              } catch (Throwable cleanup) {
+                e.addSuppressed(cleanup);
+              }
+              throw e;
+            }
           }
 
           public Object get(int column) throws SQLException {

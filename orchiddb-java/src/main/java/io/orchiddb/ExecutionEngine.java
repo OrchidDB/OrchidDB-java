@@ -19,7 +19,15 @@ public interface ExecutionEngine {
       return schemas(mapping.sources());
     }
 
-    QueryResult execute(CompiledQuery query) throws SQLException;
+    /** Batch execution; adapters must implement a native batch path or reject explicitly. */
+    default ArrowResult executeArrow(CompiledQuery query) throws SQLException {
+      throw new java.sql.SQLFeatureNotSupportedException("This engine has no Arrow result adapter");
+    }
+
+    /** Row convenience for Arrow adapters. Legacy row-only adapters may override this. */
+    default QueryResult execute(CompiledQuery query) throws SQLException {
+      return executeArrow(query).rows();
+    }
 
     void close() throws SQLException;
   }

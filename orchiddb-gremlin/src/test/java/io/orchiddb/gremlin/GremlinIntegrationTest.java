@@ -177,4 +177,38 @@ class GremlinIntegrationTest {
     assertEquals(3L, g.E().count().next());
     assertFalse(connection.getAutoCommit());
   }
+
+  @Test
+  void fluentGremlinUsesConfiguredArrowBackend() throws Exception {
+    try (var allocator = new org.apache.arrow.memory.RootAllocator()) {
+      var exports = new java.util.concurrent.atomic.AtomicInteger();
+      var engine =
+          JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection)
+              .withArrow(
+                  (rows, memory, size) -> {
+                    exports.incrementAndGet();
+                    return (org.apache.arrow.vector.ipc.ArrowReader)
+                        rows.unwrap(org.duckdb.DuckDBResultSet.class)
+                            .arrowExportStream(memory, size);
+                  },
+                  allocator,
+                  128);
+      var mapping =
+          new GraphMapping(
+              List.of(
+                  NodeMapping.node("Person", Source.table("lake", "people"), "id")
+                      .property("name", "name")),
+              List.of());
+      var arrowGraph = new OrchidDB(compiler, PlanCache.none(), engine).graph(mapping);
+      try (var traversal = OrchidGremlin.traversal(arrowGraph)) {
+        assertEquals(
+            List.of("Ada", "Grace", "Linus", SPECIAL),
+            traversal.V().order().by("name").values("name").toList());
+      }
+      assertEquals(1, exports.get());
+      assertEquals(0, allocator.getAllocatedMemory());
+      assertTrue(allocator.getChildAllocators().isEmpty());
+      assertFalse(connection.isClosed());
+    }
+  }
 }

@@ -4,6 +4,11 @@ import java.sql.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.apache.arrow.vector.ipc.ArrowReader;
+import org.apache.arrow.vector.types.pojo.Schema;
 
 /** JDBC execution adapter. Borrowing preserves the exact session supplied by the application. */
 public final class JdbcEngine implements ExecutionEngine {
@@ -11,7 +16,10 @@ public final class JdbcEngine implements ExecutionEngine {
   private final SqlDialect dialect;
   private final Connection borrowed;
   private final DataSource pool;
-  private final AtomicBoolean inUse = new AtomicBoolean();
+  private final AtomicBoolean inUse;
+  private final ArrowExporter arrowExporter;
+  private final BufferAllocator arrowAllocator;
+  private final int arrowBatchSize;
   private final int fetchSize;
   private final int timeoutSeconds;
 
@@ -22,6 +30,10 @@ public final class JdbcEngine implements ExecutionEngine {
       DataSource pool,
       int fetchSize,
       int timeoutSeconds) {
+    this.inUse = new AtomicBoolean();
+    this.arrowExporter = null;
+    this.arrowAllocator = null;
+    this.arrowBatchSize = 0;
     this.id = Checks.name(id);
     this.dialect = Objects.requireNonNull(dialect);
     this.borrowed = borrowed;
@@ -30,6 +42,26 @@ public final class JdbcEngine implements ExecutionEngine {
       throw new IllegalArgumentException("Negative execution setting");
     this.fetchSize = fetchSize;
     this.timeoutSeconds = timeoutSeconds;
+  }
+
+  private JdbcEngine(
+      JdbcEngine base, ArrowExporter exporter, BufferAllocator allocator, int batchSize) {
+    if (batchSize <= 0) throw new IllegalArgumentException("Arrow batch size must be positive");
+    id = base.id;
+    dialect = base.dialect;
+    borrowed = base.borrowed;
+    pool = base.pool;
+    fetchSize = base.fetchSize;
+    timeoutSeconds = base.timeoutSeconds;
+    inUse = base.inUse;
+    arrowExporter = Objects.requireNonNull(exporter);
+    arrowAllocator = Objects.requireNonNull(allocator);
+    arrowBatchSize = batchSize;
+  }
+
+  /** Configure native Arrow export. The caller owns the parent allocator and driver. */
+  public JdbcEngine withArrow(ArrowExporter exporter, BufferAllocator allocator, int batchSize) {
+    return new JdbcEngine(this, exporter, allocator, batchSize);
   }
 
   public static JdbcEngine borrowed(String id, SqlDialect dialect, Connection connection) {
@@ -77,6 +109,8 @@ public final class JdbcEngine implements ExecutionEngine {
   private final class JdbcSession implements Session {
     private final Connection connection;
     private final Set<Cursor> cursors = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<ArrowResult> arrowResults =
+        Collections.newSetFromMap(new IdentityHashMap<>());
     private boolean closed;
 
     JdbcSession(Connection connection) {
@@ -142,7 +176,43 @@ public final class JdbcEngine implements ExecutionEngine {
       return Collections.unmodifiableMap(result);
     }
 
+    public ArrowResult executeArrow(CompiledQuery query) throws SQLException {
+      checkOpen();
+      if (!query.engine().equals(id) || !query.dialect().equals(dialect))
+        throw new SQLException("Plan is bound to a different engine or dialect");
+      if (arrowExporter == null)
+        throw new SQLFeatureNotSupportedException(
+            "Configure JdbcEngine.withArrow with your driver's native exporter");
+      Statement statement = null;
+      ResultSet rows = null;
+      BufferAllocator allocator = null;
+      ArrowReader reader = null;
+      try {
+        allocator =
+            arrowAllocator.newChildAllocator("orchiddb-result", 0, arrowAllocator.getLimit());
+        statement = connection.createStatement();
+        if (fetchSize > 0) statement.setFetchSize(fetchSize);
+        if (timeoutSeconds > 0) statement.setQueryTimeout(timeoutSeconds);
+        rows = statement.executeQuery(query.sql());
+        reader = Objects.requireNonNull(arrowExporter.export(rows, allocator, arrowBatchSize));
+        var result = new NativeArrowResult(reader, allocator, rows, statement);
+        arrowResults.add(result);
+        return result;
+      } catch (Exception | Error e) {
+        try {
+          ResultResources.close(reader, rows, statement, allocator);
+        } catch (Throwable cleanup) {
+          e.addSuppressed(cleanup);
+        }
+        if (e instanceof SQLException sql) throw sql;
+        if (e instanceof RuntimeException runtime) throw runtime;
+        if (e instanceof Error error) throw error;
+        throw new SQLException("Could not export Arrow results", e);
+      }
+    }
+
     public QueryResult execute(CompiledQuery query) throws SQLException {
+      if (arrowExporter != null) return executeArrow(query).rows();
       checkOpen();
       if (!query.engine().equals(id) || !query.dialect().equals(dialect))
         throw new SQLException("Plan is bound to a different engine or dialect");
@@ -167,24 +237,84 @@ public final class JdbcEngine implements ExecutionEngine {
     public void close() throws SQLException {
       if (closed) return;
       closed = true;
-      SQLException failure = null;
-      for (var cursor : List.copyOf(cursors)) {
-        try {
-          cursor.close();
-        } catch (SQLException e) {
-          if (failure == null) failure = e;
-          else failure.addSuppressed(e);
-        }
-      }
+      var resources = new ArrayList<AutoCloseable>();
+      resources.addAll(arrowResults);
+      resources.addAll(cursors);
+      if (borrowed == null) resources.add(connection);
       try {
-        if (borrowed == null) connection.close();
-      } catch (SQLException e) {
-        if (failure == null) failure = e;
-        else failure.addSuppressed(e);
+        ResultResources.close(resources.toArray(AutoCloseable[]::new));
       } finally {
         if (borrowed != null) inUse.set(false);
       }
-      if (failure != null) throw failure;
+    }
+
+    private final class NativeArrowResult implements ArrowResult {
+      private final ArrowReader reader;
+      private final BufferAllocator allocator;
+      private final ResultSet rows;
+      private final Statement statement;
+      private final VectorSchemaRoot root;
+      private boolean closed;
+      private boolean current;
+      private boolean finished;
+
+      NativeArrowResult(
+          ArrowReader reader, BufferAllocator allocator, ResultSet rows, Statement statement)
+          throws java.io.IOException {
+        this.reader = reader;
+        this.allocator = allocator;
+        this.rows = rows;
+        this.statement = statement;
+        root = reader.getVectorSchemaRoot();
+      }
+
+      private void checkOpen() throws SQLException {
+        if (closed) throw new SQLException("Arrow result is closed");
+      }
+
+      public Schema schema() throws SQLException {
+        checkOpen();
+        return root.getSchema();
+      }
+
+      public DictionaryProvider dictionaries() throws SQLException {
+        checkOpen();
+        return reader;
+      }
+
+      public VectorSchemaRoot batch() throws SQLException {
+        checkOpen();
+        if (!current) throw new SQLException("No current Arrow batch; call nextBatch first");
+        return root;
+      }
+
+      public boolean nextBatch() throws SQLException {
+        checkOpen();
+        current = false;
+        if (finished) return false;
+        try {
+          current = reader.loadNextBatch();
+          finished = !current;
+          return current;
+        } catch (Exception | Error e) {
+          try {
+            close();
+          } catch (Throwable cleanup) {
+            e.addSuppressed(cleanup);
+          }
+          if (e instanceof RuntimeException runtime) throw runtime;
+          if (e instanceof Error error) throw error;
+          throw new SQLException("Could not read Arrow batch", e);
+        }
+      }
+
+      public void close() throws SQLException {
+        if (closed) return;
+        closed = true;
+        current = false;
+        arrowResults.remove(this);
+        ResultResources.close(reader, rows, statement, allocator);
+      }
     }
 
     private final class Cursor implements QueryResult {

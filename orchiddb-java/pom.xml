@@ -9,6 +9,15 @@
   <name>OrchidDB Java</name>
   <dependencies>
     <dependency>
+      <groupId>org.apache.arrow</groupId><artifactId>arrow-vector</artifactId><version>${arrow.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.arrow</groupId><artifactId>arrow-c-data</artifactId><version>${arrow.version}</version><scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.arrow</groupId><artifactId>arrow-memory-netty</artifactId><version>${arrow.version}</version><scope>test</scope>
+    </dependency>
+    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
       <version>2.18.3</version>

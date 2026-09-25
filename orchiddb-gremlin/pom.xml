@@ -8,6 +8,8 @@
   <artifactId>orchiddb-gremlin</artifactId>
   <name>OrchidDB Gremlin adapter</name>
   <dependencies>
+    <dependency><groupId>org.apache.arrow</groupId><artifactId>arrow-c-data</artifactId><version>${arrow.version}</version><scope>test</scope></dependency>
+    <dependency><groupId>org.apache.arrow</groupId><artifactId>arrow-memory-netty</artifactId><version>${arrow.version}</version><scope>test</scope></dependency>
     <dependency>
       <groupId>com.orchiddb</groupId>
       <artifactId>orchiddb-java</artifactId>

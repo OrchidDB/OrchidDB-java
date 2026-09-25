@@ -1,6 +1,6 @@
 # OrchidDB for Java
 
-**Start here: [Runnable examples](examples/README.md)** — Gremlin, existing DuckDB connections, UDFs, SQL-only compilation, and multiple engines.
+**Start here: [Runnable examples](examples/README.md)** — Arrow batches, Gremlin, existing DuckDB connections, UDFs, SQL-only compilation, and multiple engines.
 
 Compile Cypher, Gremlin and mapped SPARQL queries to SQL, then execute them on **your existing database connection**. This library contains no DuckDB database, driver, connection pool, SQLg layer, or result cache. Its JNI library contains the OrchidDB compiler, built with `default-features = false`.
 
@@ -24,6 +24,7 @@ Requirements: Rust 1.93 or newer, a platform C toolchain, Maven 3.9+, and Java 1
 export JAVA_HOME=$(/usr/libexec/java_home -v 21)
 cd ~/orchiddb/orchiddb-java
 ./scripts/build.sh
+./scripts/run-example.sh ArrowBatches
 ./scripts/run-example.sh BringYourOwnDuckDb
 ./scripts/run-example.sh ClientFunctions
 ./scripts/run-example.sh OfflineSql
@@ -43,7 +44,7 @@ To install the development JAR in your local Maven repository, run `mvn install`
 </dependency>
 ```
 
-Add your chosen JDBC driver separately. DuckDB JDBC appears only in this project's **test** dependencies so examples can run. The base JAR's runtime dependency is Jackson. Load your own compiler with `NativeSqlCompiler.load(Path)`, or use `load()` with a matching platform-classifier JAR as described in the [release guide](docs/releases.md). Classpath loading verifies and extracts the installed compiler; it never downloads code or contacts a database.
+Add your chosen JDBC driver separately. DuckDB JDBC appears only in this project's **test** dependencies so examples can run. The base JAR depends on Jackson and Arrow vectors; the application supplies its Arrow memory implementation and any driver-specific export support. Load your own compiler with `NativeSqlCompiler.load(Path)`, or use `load()` with a matching platform-classifier JAR as described in the [release guide](docs/releases.md). Classpath loading verifies and extracts the installed compiler; it never downloads code or contacts a database.
 
 ## Bring your own DuckDB
 
@@ -78,11 +79,21 @@ See [BringYourOwnDuckDb.java](orchiddb-java/src/test/java/io/orchiddb/examples/B
 
 `Source.table("lake", "catalog", "schema", "table")` uses distinct literal identifier parts; names are quoted, never interpolated as raw SQL. Use two parts for `schema.table`. Node IDs and edge IDs/endpoints must be signed integer columns, unique within each node label or edge type. Supply a distinct edge ID even for parallel edges. OrchidDB validates metadata but does not scan data to prove uniqueness or referential integrity. NULL or duplicate identities violate the mapping contract.
 
+## Arrow batches
+
+Use `graph.queryArrow(query)` for columnar results. Configure your JDBC adapter
+with `withArrow(exporter, allocator, batchSize)` to use your driver's native Arrow
+stream. OrchidDB receives vectors directly; it does not reconstruct them from
+JDBC rows. The allocator and connection remain caller-owned. See the
+[Arrow guide](docs/arrow.md) for runnable setup, dependencies, JVM settings and
+buffer lifetimes. The row API becomes a convenience view over Arrow when this
+adapter is configured.
+
 ## Ownership and execution
 
 - `JdbcEngine.borrowed(...)` uses the exact `Connection`. It never closes, commits, rolls back, or configures it. One active library session is allowed per borrowed adapter. Overlapping use fails immediately; close the result before reusing it. External use of that same connection remains your responsibility; do not create multiple adapters to bypass serialization.
 - `JdbcEngine.pooled(...)` borrows a connection from your `DataSource` for each operation. Schema discovery and query execution use one lease. Closing the result returns that lease. Configure extensions, UDFs and session initialization through your pool so every borrowed session has them. OrchidDB never closes the pool.
-- `QueryResult` streams the driver's result and owns its statement. Always use try-with-resources, including after early iteration. JDBC drivers control actual buffering. `get(int)` is 1-based; `get(String)` rejects ambiguous duplicate column names. Values are driver-native JDBC values, including `java.sql.Array`/`Struct` where applicable.
+- Without Arrow configuration, `QueryResult` wraps the driver's row cursor and owns its statement. Always use try-with-resources, including after early iteration. JDBC drivers control actual buffering. `get(int)` is 1-based; `get(String)` rejects ambiguous duplicate column names. Values are driver-native JDBC values, including `java.sql.Array`/`Struct` where applicable.
 - Optional `fetchSize` and `timeoutSeconds` overloads configure library-created statements. OrchidDB never changes autocommit to obtain driver-specific streaming behavior. For full control, compile and execute the returned SQL yourself.
 - Errors in schema discovery, planning, or execution release acquired resources. Closing a borrowed result leaves its connection and transaction open.
 
