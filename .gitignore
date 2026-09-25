@@ -4,3 +4,5 @@
 *.so
 *.dll
 .DS_Store
+
+/orchiddb-gremlin/target/

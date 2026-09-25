@@ -134,3 +134,14 @@ Cross-engine graphs fail before a connection is acquired. Future federation need
 The separation of a Java API and native component follows [DuckDB Java](https://github.com/duckdb/duckdb-java). Caller-defined functions use its [official UDF API](https://github.com/duckdb/duckdb-java/blob/main/UDF.MD). The OrchidDB JNI boundary is a stateless, versioned JSON request/response with no database handles; planning runs on a bounded native worker pool with an independent stack. Rust panics become planning errors at the boundary.
 
 See [LICENSE.md](LICENSE.md) for the project's license terms.
+
+## Optional native Java Gremlin API
+
+The separate [orchiddb-gremlin module](orchiddb-gremlin/README.md) lets you write
+`g.V().has("name", "Ada").out("KNOWS").values("name").toList()` against your
+existing `OrchidDB.Graph`. It adds TinkerPop only when explicitly selected; the
+base library has no TinkerPop dependency. This first adapter supports read-only
+scalar results and rejects unsupported traversal semantics explicitly.
+
+Build and run its example with `./scripts/build-gremlin.sh` and
+`./scripts/run-gremlin-example.sh`.

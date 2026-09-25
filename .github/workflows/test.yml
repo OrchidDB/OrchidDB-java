@@ -31,12 +31,14 @@ jobs:
           distribution: temurin
           java-version: ${{ matrix.java }}
           cache: maven
-          cache-dependency-path: orchiddb-java/pom.xml
+          cache-dependency-path: |
+            orchiddb-java/pom.xml
+            orchiddb-java/orchiddb-gremlin/pom.xml
       - name: Install Rust
         run: rustup toolchain install 1.93.1 --profile minimal && rustup default 1.93.1
       - name: Verify Java API and native integration
         working-directory: orchiddb-java
-        run: ./scripts/build.sh
+        run: ./scripts/build-gremlin.sh
       - name: Ensure compiler does not link DuckDB
         working-directory: orchiddb-java
         shell: bash
