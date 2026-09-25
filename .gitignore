@@ -6,3 +6,7 @@
 .DS_Store
 
 /orchiddb-gremlin/target/
+
+/orchiddb-java/target/
+
+__pycache__/

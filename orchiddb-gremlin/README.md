@@ -15,11 +15,11 @@ Requires the same Java 17+, Rust, and sibling core checkout as the base library.
 
 On macOS, set `JAVA_HOME=$(/usr/libexec/java_home -v 17)` if the shell selects an older JDK. The example creates tables in a caller-owned DuckDB connection, maps them, and prints `Ada knows [Grace]` and `People: 2`. It then confirms the connection remains open.
 
-The base library builds independently with `./scripts/build.sh`. The adapter has its own POM and adds TinkerPop only when explicitly selected. Artifacts are not yet published to Maven Central. After building, install the adapter locally with `mvn -f orchiddb-gremlin/pom.xml install` and use:
+The base library builds independently with `./scripts/build.sh`. The adapter inherits the shared Maven parent and is included in reactor builds with `-Pgremlin`; it adds TinkerPop only when explicitly selected. Artifacts are not yet published to Maven Central. After building, install the adapter locally with `mvn -Pgremlin install` and use:
 
 ```xml
 <dependency>
-  <groupId>io.orchiddb</groupId>
+  <groupId>com.orchiddb</groupId>
   <artifactId>orchiddb-gremlin</artifactId>
   <version>0.1.0-SNAPSHOT</version>
 </dependency>

@@ -2,6 +2,9 @@ name: Java bindings
 on:
   push:
   pull_request:
+concurrency:
+  group: java-ci-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -33,6 +36,7 @@ jobs:
           cache: maven
           cache-dependency-path: |
             orchiddb-java/pom.xml
+            orchiddb-java/orchiddb-java/pom.xml
             orchiddb-java/orchiddb-gremlin/pom.xml
       - name: Install Rust
         run: rustup toolchain install 1.93.1 --profile minimal && rustup default 1.93.1

@@ -45,12 +45,7 @@ public final class OrchidDB {
         throws SQLException {
       var request =
           new Compilation(
-              engine.id(),
-              engine.dialect(),
-              mapping,
-              session.schemas(mapping.sources()),
-              functions,
-              query);
+              engine.id(), engine.dialect(), mapping, session.schemas(mapping), functions, query);
       var plan = cache.get(request);
       if (plan == null) {
         plan = compiler.compile(request);

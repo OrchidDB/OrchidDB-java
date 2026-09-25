@@ -88,6 +88,28 @@ public final class JdbcEngine implements ExecutionEngine {
     }
 
     public Map<Source, List<Column>> schemas(Set<Source> sources) throws SQLException {
+      return schemas(sources, Map.of());
+    }
+
+    public Map<Source, List<Column>> schemas(GraphMapping mapping) throws SQLException {
+      var selected = new LinkedHashMap<Source, Set<String>>();
+      for (var node : mapping.nodes()) {
+        var columns = selected.computeIfAbsent(node.source(), ignored -> new LinkedHashSet<>());
+        columns.add(node.id());
+        columns.addAll(node.properties().values());
+      }
+      for (var edge : mapping.edges()) {
+        var columns = selected.computeIfAbsent(edge.source(), ignored -> new LinkedHashSet<>());
+        columns.add(edge.id());
+        columns.add(edge.sourceColumn());
+        columns.add(edge.targetColumn());
+        columns.addAll(edge.properties().values());
+      }
+      return schemas(mapping.sources(), selected);
+    }
+
+    private Map<Source, List<Column>> schemas(
+        Set<Source> sources, Map<Source, Set<String>> selected) throws SQLException {
       checkOpen();
       var result = new LinkedHashMap<Source, List<Column>>();
       for (var source : sources) {
@@ -96,8 +118,15 @@ public final class JdbcEngine implements ExecutionEngine {
         // Metadata is discovered in this session. No views, tables or transactions are changed.
         try (var statement = connection.createStatement()) {
           if (timeoutSeconds > 0) statement.setQueryTimeout(timeoutSeconds);
+          String projection =
+              selected.containsKey(source)
+                  ? selected.get(source).stream()
+                      .map(dialect::quote)
+                      .collect(java.util.stream.Collectors.joining(", "))
+                  : "*";
           try (var rows =
-              statement.executeQuery("SELECT * FROM " + source.sql(dialect) + " WHERE 1 = 0")) {
+              statement.executeQuery(
+                  "SELECT " + projection + " FROM " + source.sql(dialect) + " WHERE 1 = 0")) {
             var meta = rows.getMetaData();
             var columns = new ArrayList<Column>();
             for (int i = 1; i <= meta.getColumnCount(); i++)

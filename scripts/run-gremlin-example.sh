@@ -8,6 +8,6 @@ case "$(uname -s)" in
 esac
 native_dir="${CARGO_TARGET_DIR:-$PWD/native/target}"
 native_dir="$(cd "$native_dir" && pwd)"
-mvn -q -f orchiddb-gremlin/pom.xml test-compile exec:java \
+mvn -q -Pgremlin -pl orchiddb-gremlin test-compile exec:java \
   -Dexec.classpathScope=test -Dexec.mainClass=io.orchiddb.gremlin.GremlinExample \
   -Dorchiddb.native.path="$native_dir/debug/$lib"

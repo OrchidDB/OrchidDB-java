@@ -142,6 +142,11 @@ class LifecycleTest {
         s.execute("ALTER TABLE people ADD COLUMN name VARCHAR");
       }
       g.plan(a);
+      assertEquals(2, compiles.get(), "Unmapped columns do not invalidate plans");
+      try (var s = c.createStatement()) {
+        s.execute("ALTER TABLE people ALTER COLUMN id TYPE INTEGER");
+      }
+      g.plan(a);
       assertEquals(3, compiles.get());
     }
   }
@@ -215,7 +220,12 @@ class LifecycleTest {
                   sql("SELECT 1"),
                   PlanCache.none(),
                   JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, c))
-              .graph(MAPPING);
+              .graph(
+                  new GraphMapping(
+                      List.of(
+                          NodeMapping.node("Person", SOURCE, "id")
+                              .property("created", "created_at")),
+                      List.of()));
       assertThrows(SQLException.class, () -> g.plan(Query.cypher("ignored")));
       assertFalse(c.isClosed());
     }

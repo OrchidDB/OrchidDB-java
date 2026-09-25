@@ -1,0 +1,147 @@
+name: Stage Java release on Maven Central
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag matching the Maven version (java-vX.Y.Z)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: java-central-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  metadata:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      core: ${{ steps.release.outputs.core }}
+      commit: ${{ steps.release.outputs.commit }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: release
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python scripts/release-metadata.py
+  native:
+    needs: metadata
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            platform: linux-x86_64
+            library: liborchiddb_java.so
+          - os: macos-14
+            platform: macos-aarch64
+            library: liborchiddb_java.dylib
+          - os: macos-15-intel
+            platform: macos-x86_64
+            library: liborchiddb_java.dylib
+          - os: windows-2022
+            platform: windows-x86_64
+            library: orchiddb_java.dll
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_BUILD_JOBS: 2
+      VERSION: ${{ needs.metadata.outputs.version }}
+      PLATFORM: ${{ matrix.platform }}
+      LIBRARY: ${{ matrix.library }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: orchiddb-java
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+          path: orchiddb-java
+      - uses: actions/checkout@v4
+        with:
+          repository: OrchidDB/OrchidDB
+          ref: ${{ needs.metadata.outputs.core }}
+          path: orchiddb
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build compiler without DuckDB
+        run: |
+          rustup toolchain install 1.93.1 --profile minimal
+          cargo +1.93.1 build --manifest-path native/Cargo.toml --locked --release
+          cargo +1.93.1 tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
+          if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi
+      - name: Verify Java and Gremlin on the release binary
+        run: |
+          native_path=$(python -c 'import os,pathlib; print(pathlib.Path("native/target/release",os.environ["LIBRARY"]).resolve())')
+          mvn -B -Pgremlin -Dorchiddb.native.path="$native_path" clean verify
+      - name: Package and test compiler JAR in a fresh JVM
+        run: |
+          python scripts/package-native.py --platform "$PLATFORM" --library "native/target/release/$LIBRARY" --version "$VERSION" --output "target/native-artifacts/$PLATFORM.jar"
+          python scripts/test-native-package.py --jar "target/native-artifacts/$PLATFORM.jar" --version "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: orchiddb-java/target/native-artifacts/${{ matrix.platform }}.jar
+          if-no-files-found: error
+          retention-days: 14
+  stage:
+    needs: [metadata, native]
+    runs-on: ubuntu-22.04
+    environment: maven-central
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.metadata.outputs.commit }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          server-id: central
+          server-username: CENTRAL_USERNAME
+          server-password: CENTRAL_PASSWORD
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: target/native-artifacts
+          merge-multiple: true
+      - name: Verify all native artifacts match this release
+        env:
+          VERSION: ${{ needs.metadata.outputs.version }}
+        run: python scripts/verify-native-artifacts.py --version "$VERSION"
+      - name: Import signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+        run: |
+          test -n "$GPG_PRIVATE_KEY"
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+      - name: Sign and upload for Central review
+        env:
+          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          test -n "$CENTRAL_USERNAME" && test -n "$CENTRAL_PASSWORD"
+          mvn -B -Pgremlin,native-release,central -DskipTests deploy
+      - name: Save signed release bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: central-release-bundle
+          path: '**/target/central-publishing/*.zip'
+          if-no-files-found: warn
+      - name: Record next step
+        run: echo 'Release uploaded for validation. Review and publish it at https://central.sonatype.com/publishing/deployments.' >> "$GITHUB_STEP_SUMMARY"

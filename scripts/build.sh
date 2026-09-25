@@ -9,4 +9,4 @@ case "$(uname -s)" in
 esac
 native_dir="${CARGO_TARGET_DIR:-$PWD/native/target}"
 native_dir="$(cd "$native_dir" && pwd)"
-mvn -Dorchiddb.native.path="$native_dir/debug/$lib" verify "$@"
+mvn -Dorchiddb.native.path="$native_dir/debug/$lib" "${ORCHIDDB_MAVEN_GOAL:-verify}" "$@"

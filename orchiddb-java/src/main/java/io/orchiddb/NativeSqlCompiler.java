@@ -2,6 +2,7 @@ package io.orchiddb;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.orchiddb.internal.NativeBridge;
+import io.orchiddb.internal.NativeLibrary;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -11,6 +12,15 @@ public final class NativeSqlCompiler implements SqlCompiler {
   private static Path loadedPath;
 
   private NativeSqlCompiler() {}
+
+  /**
+   * Loads the explicitly configured path, or the matching native classifier JAR on the classpath.
+   */
+  public static NativeSqlCompiler load() {
+    String override = System.getProperty("orchiddb.native.path");
+    return load(
+        override == null || override.isBlank() ? NativeLibrary.extract() : Path.of(override));
+  }
 
   public static synchronized NativeSqlCompiler load(Path library) {
     Path path = library.toAbsolutePath().normalize();

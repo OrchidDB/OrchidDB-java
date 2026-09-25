@@ -1,35 +1,18 @@
-<?xml version="1.0" ?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <groupId>io.orchiddb</groupId>
-  <artifactId>orchiddb-java</artifactId>
+  <groupId>com.orchiddb</groupId>
+  <artifactId>orchiddb-parent</artifactId>
   <version>0.1.0-SNAPSHOT</version>
   <name>OrchidDB Java</name>
   <description>Graph queries over caller-owned SQL engines</description>
   <properties>
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <orchiddb.native.path>${project.basedir}/native/target/debug/liborchiddb_java.dylib</orchiddb.native.path>
+    <orchiddb.native.path>${maven.multiModuleProjectDirectory}/native/target/debug/liborchiddb_java.dylib</orchiddb.native.path>
+    <project.build.outputTimestamp>2026-09-25T00:00:00Z</project.build.outputTimestamp>
+    <central.autoPublish>false</central.autoPublish>
+    <release.artifacts>${maven.multiModuleProjectDirectory}/target/native-artifacts</release.artifacts>
   </properties>
-  <dependencies>
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>2.18.3</version>
-    </dependency>
-    <dependency>
-      <groupId>org.duckdb</groupId>
-      <artifactId>duckdb_jdbc</artifactId>
-      <version>1.5.5.1</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter</artifactId>
-      <version>5.11.4</version>
-      <scope>test</scope>
-    </dependency>
-  </dependencies>
   <build>
     <plugins>
       <plugin>
@@ -41,7 +24,7 @@
             <googleJavaFormat>
               <version>1.24.0</version>
             </googleJavaFormat>
-            <removeUnusedImports/>
+            <removeUnusedImports />
           </java>
         </configuration>
         <executions>
@@ -94,6 +77,127 @@
         <artifactId>exec-maven-plugin</artifactId>
         <version>3.5.0</version>
       </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-deploy-plugin</artifactId>
+        <version>3.1.4</version>
+        <configuration>
+          <deployAtEnd>true</deployAtEnd>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.11.2</version>
+        <configuration>
+          <doclint>all,-missing</doclint>
+        </configuration>
+        <executions>
+          <execution>
+            <id>javadoc</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
+  <packaging>pom</packaging>
+  <url>https://orchiddb.com</url>
+  <licenses>
+    <license>
+      <name>GNU General Public License v3.0</name>
+      <url>https://github.com/OrchidDB/OrchidDB/blob/main/LICENSE.md</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  <developers>
+    <developer>
+      <id>henneberger</id>
+      <name>Daniel Henneberger</name>
+      <url>https://github.com/henneberger</url>
+    </developer>
+  </developers>
+  <scm>
+    <url>https://github.com/OrchidDB/OrchidDB-java</url>
+    <connection>scm:git:https://github.com/OrchidDB/OrchidDB-java.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/OrchidDB/OrchidDB-java.git</developerConnection>
+    <tag>HEAD</tag>
+  </scm>
+  <modules>
+    <module>orchiddb-java</module>
+  </modules>
+  <profiles>
+    <profile>
+      <id>gremlin</id>
+      <modules>
+        <module>orchiddb-gremlin</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>central</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.sonatype.central</groupId>
+            <artifactId>central-publishing-maven-plugin</artifactId>
+            <version>0.11.0</version>
+            <extensions>true</extensions>
+            <configuration>
+              <publishingServerId>central</publishingServerId>
+              <autoPublish>${central.autoPublish}</autoPublish>
+              <waitUntil>validated</waitUntil>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <version>3.2.8</version>
+            <executions>
+              <execution>
+                <id>sign</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <bestPractices>true</bestPractices>
+              <gpgArguments>
+                <arg>--pinentry-mode</arg>
+                <arg>loopback</arg>
+              </gpgArguments>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>

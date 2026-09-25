@@ -7,7 +7,7 @@ if grep -Eq '^(duckdb|libduckdb-sys) ' target/native-dependencies.txt; then
   echo 'Compiler unexpectedly depends on DuckDB' >&2
   exit 1
 fi
-mvn -q dependency:build-classpath -DincludeScope=runtime -Dmdep.outputFile=target/runtime-classpath.txt
+mvn -q -pl orchiddb-java dependency:build-classpath -DincludeScope=runtime -Dmdep.outputFile="$PWD/target/runtime-classpath.txt"
 if grep -Eqi 'duckdb_jdbc-[^:;]*\.jar' target/runtime-classpath.txt; then
   echo 'Java runtime unexpectedly depends on DuckDB' >&2
   exit 1

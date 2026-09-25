@@ -58,6 +58,16 @@ class IntegrationTest {
   }
 
   @Test
+  void ignoresUnmappedComplexColumnsInExistingTables() throws Exception {
+    try (var statement = connection.createStatement()) {
+      statement.execute("ALTER TABLE people ADD COLUMN payload STRUCT(tags VARCHAR[])");
+    }
+    assertEquals(
+        List.of("Grace"),
+        values(graph.query(Query.cypher("MATCH (p:Person) WHERE p.name='Grace' RETURN p.name"))));
+  }
+
+  @Test
   void sameConnectionJoin() throws Exception {
     assertEquals(
         List.of("Grace"),

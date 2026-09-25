@@ -6,6 +6,8 @@ Compile Cypher, Gremlin and mapped SPARQL queries to SQL, then execute them on *
 
 The application owns the engine: choose your DuckDB JDBC version, configure extensions and Iceberg credentials, register UDFs, configure caching, and decide when to commit. OrchidDB reads source metadata and runs the generated SELECT on the **same connection**, including temporary tables and functions. It never reopens a JDBC URL or rebuilds your views.
 
+[Architecture review](docs/architecture.md) · [Maven Central release guide](docs/releases.md)
+
 ## Build and try it
 
 Keep the two repositories next to one another. The compatible core revision is recorded in `native/CORE_REVISION`; CI checks out that exact revision:
@@ -13,7 +15,7 @@ Keep the two repositories next to one another. The compatible core revision is r
 ```text
 ~/orchiddb/
   orchiddb/       # Rust compiler
-  orchiddb-java/  # this library
+  orchiddb-java/  # Maven parent: orchiddb-java API module + optional orchiddb-gremlin
 ```
 
 Requirements: Rust 1.93 or newer, a platform C toolchain, Maven 3.9+, and Java 17+. First builds compile DataFusion and can take several minutes. No DuckDB C++ build is needed. On macOS, select Java 17+ if your shell still defaults to Java 8:
@@ -29,19 +31,19 @@ cd ~/orchiddb/orchiddb-java
 ./scripts/check-dependencies.sh
 ```
 
-`build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `target/orchiddb-java-0.1.0-SNAPSHOT.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.
+`build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `orchiddb-java/target/orchiddb-java-0.1.0-SNAPSHOT.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.
 
-To install the development JAR in your local Maven repository, run `./scripts/build.sh install`. These coordinates are local development coordinates, not a published Maven Central package:
+To install the development JAR in your local Maven repository, run `mvn install` after building. These coordinates are local development coordinates, not a published Maven Central package:
 
 ```xml
 <dependency>
-  <groupId>io.orchiddb</groupId>
+  <groupId>com.orchiddb</groupId>
   <artifactId>orchiddb-java</artifactId>
   <version>0.1.0-SNAPSHOT</version>
 </dependency>
 ```
 
-Add your chosen JDBC driver separately. DuckDB JDBC appears only in this project's **test** dependencies so examples can run. The JAR's runtime dependency is Jackson; the application loads the separately built OrchidDB native compiler explicitly. There is no native download, extraction, or network access at class initialization.
+Add your chosen JDBC driver separately. DuckDB JDBC appears only in this project's **test** dependencies so examples can run. The base JAR's runtime dependency is Jackson. Load your own compiler with `NativeSqlCompiler.load(Path)`, or use `load()` with a matching platform-classifier JAR as described in the [release guide](docs/releases.md). Classpath loading verifies and extracts the installed compiler; it never downloads code or contacts a database.
 
 ## Bring your own DuckDB
 
@@ -72,7 +74,7 @@ try (var statement = connection.createStatement();
 }
 ```
 
-See [BringYourOwnDuckDb.java](src/test/java/io/orchiddb/examples/BringYourOwnDuckDb.java) for a complete runnable program with table creation and data. [OfflineSql.java](src/test/java/io/orchiddb/examples/OfflineSql.java) compiles against explicit schema metadata without opening a database at all.
+See [BringYourOwnDuckDb.java](orchiddb-java/src/test/java/io/orchiddb/examples/BringYourOwnDuckDb.java) for a complete runnable program with table creation and data. [OfflineSql.java](orchiddb-java/src/test/java/io/orchiddb/examples/OfflineSql.java) compiles against explicit schema metadata without opening a database at all.
 
 `Source.table("lake", "catalog", "schema", "table")` uses distinct literal identifier parts; names are quoted, never interpolated as raw SQL. Use two parts for `schema.table`. Node IDs and edge IDs/endpoints must be signed integer columns, unique within each node label or edge type. Supply a distinct edge ID even for parallel edges. OrchidDB validates metadata but does not scan data to prove uniqueness or referential integrity. NULL or duplicate identities violate the mapping contract.
 
@@ -86,7 +88,7 @@ See [BringYourOwnDuckDb.java](src/test/java/io/orchiddb/examples/BringYourOwnDuc
 
 ## Functions, plugins and Iceberg
 
-Register actual functions using the engine's API, then declare their compiler signatures. For example, [ClientFunctions.java](src/test/java/io/orchiddb/examples/ClientFunctions.java) uses DuckDB's own Java UDF API on the caller's connection:
+Register actual functions using the engine's API, then declare their compiler signatures. For example, [ClientFunctions.java](orchiddb-java/src/test/java/io/orchiddb/examples/ClientFunctions.java) uses DuckDB's own Java UDF API on the caller's connection:
 
 ```java
 DuckDBFunctions.scalarFunction().withName("java_next_age")
@@ -125,7 +127,7 @@ Schema types: `boolean`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`
 
 ## Multiple engines and future federation
 
-[MultipleEngines.java](src/test/java/io/orchiddb/examples/MultipleEngines.java) registers two independent engines and routes each graph to its named source. Engine IDs are part of every source mapping and compiled plan. Plans cannot be executed through a mismatched engine/dialect.
+[MultipleEngines.java](orchiddb-java/src/test/java/io/orchiddb/examples/MultipleEngines.java) registers two independent engines and routes each graph to its named source. Engine IDs are part of every source mapping and compiled plan. Plans cannot be executed through a mismatched engine/dialect.
 
 `SqlCompiler`, `ExecutionEngine`, and `ExecutionEngine.Session` are separate interfaces. JDBC is one execution adapter; a future ClickHouse HTTP adapter can implement the session interface without exposing a JDBC connection. Dialect identity is separate from transport. The native compiler renders DuckDB and PostgreSQL SQL; DuckDB execution is integration-tested, while PostgreSQL rendering is tested offline. PostgreSQL live execution is not yet certified. ClickHouse compilation is explicitly unsupported today.
 
@@ -139,7 +141,7 @@ See [LICENSE.md](LICENSE.md) for the project's license terms.
 
 ## Optional native Java Gremlin API
 
-The separate [orchiddb-gremlin module](orchiddb-gremlin/README.md) lets you write
+The optional [orchiddb-gremlin module](orchiddb-gremlin/README.md) lets you write
 `g.V().has("name", "Ada").out("KNOWS").values("name").toList()` against your
 existing `OrchidDB.Graph`. It adds TinkerPop only when explicitly selected; the
 base library has no TinkerPop dependency. This first adapter supports read-only
