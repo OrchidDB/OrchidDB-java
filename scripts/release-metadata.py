@@ -10,9 +10,9 @@ root = Path(__file__).resolve().parents[1]
 ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
 version = ET.parse(root / 'pom.xml').findtext('m:version', namespaces=ns)
 tag = os.environ['RELEASE_TAG']
-if not re.fullmatch(r'java-v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta|rc)\.[0-9]+)?', tag):
-    raise SystemExit('Use an immutable java-vX.Y.Z release tag (optionally -alpha.N/-beta.N/-rc.N)')
-if tag != 'java-v' + version:
+if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta|rc)\.[0-9]+)?', tag):
+    raise SystemExit('Use an immutable vX.Y.Z release tag (optionally -alpha.N/-beta.N/-rc.N)')
+if tag != 'v' + version:
     raise SystemExit('Tag must match the non-SNAPSHOT Maven version committed in pom.xml')
 head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
 tag_commit = subprocess.check_output(['git', 'rev-parse', 'refs/tags/' + tag + '^{commit}'], cwd=root, text=True).strip()

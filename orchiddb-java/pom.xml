@@ -3,7 +3,7 @@
   <parent>
     <groupId>com.orchiddb</groupId>
     <artifactId>orchiddb-parent</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.1.0</version>
   </parent>
   <artifactId>orchiddb-java</artifactId>
   <name>OrchidDB Java</name>

@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.orchiddb</groupId>
   <artifactId>orchiddb-parent</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
   <name>OrchidDB Java</name>
   <description>Graph queries over caller-owned SQL engines</description>
   <properties>
