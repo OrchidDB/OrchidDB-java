@@ -1,14 +1,13 @@
 package io.orchiddb.gremlin;
 
 import io.orchiddb.*;
-import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
 
 /** Run with scripts/run-gremlin-example.sh. */
 public final class GremlinExample {
   public static void main(String[] args) throws Exception {
-    var compiler = NativeSqlCompiler.load(Path.of(System.getProperty("orchiddb.native.path")));
+    var compiler = NativeSqlCompiler.load();
     // The application chooses the driver, database, extensions, credentials,
     // session configuration and transaction policy.
     try (var connection = DriverManager.getConnection("jdbc:duckdb:")) {
@@ -43,6 +42,7 @@ public final class GremlinExample {
                 .out("KNOWS")
                 .<String>values("name")
                 .toList();
+        if (!names.equals(List.of("Grace"))) throw new AssertionError(names);
         System.out.println("Ada knows " + names);
         System.out.println("People: " + g.V().count().next());
       }

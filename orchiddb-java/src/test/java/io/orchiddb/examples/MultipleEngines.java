@@ -1,14 +1,13 @@
 package io.orchiddb.examples;
 
 import io.orchiddb.*;
-import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
 
 /** Separate engine routing today; this example does not claim cross-engine joins. */
 public final class MultipleEngines {
   public static void main(String[] args) throws Exception {
-    var compiler = NativeSqlCompiler.load(Path.of(System.getProperty("orchiddb.native.path")));
+    var compiler = NativeSqlCompiler.load();
     try (var east = DriverManager.getConnection("jdbc:duckdb:");
         var west = DriverManager.getConnection("jdbc:duckdb:")) {
       try (var s = east.createStatement()) {

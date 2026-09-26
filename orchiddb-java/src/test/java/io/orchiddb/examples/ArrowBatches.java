@@ -1,7 +1,6 @@
 package io.orchiddb.examples;
 
 import io.orchiddb.*;
-import java.nio.file.Path;
 import java.sql.DriverManager;
 import java.util.List;
 import java.util.Properties;
@@ -13,7 +12,7 @@ import org.duckdb.DuckDBResultSet;
 /** scripts/run-example.sh ArrowBatches */
 public final class ArrowBatches {
   public static void main(String[] args) throws Exception {
-    var compiler = NativeSqlCompiler.load(Path.of(System.getProperty("orchiddb.native.path")));
+    var compiler = NativeSqlCompiler.load();
     var settings = new Properties();
     // The caller explicitly chooses DuckDB execution streaming before opening its connection.
     settings.setProperty("jdbc_stream_results", "true");

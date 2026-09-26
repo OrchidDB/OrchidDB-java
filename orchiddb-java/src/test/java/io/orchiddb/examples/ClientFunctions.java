@@ -1,7 +1,6 @@
 package io.orchiddb.examples;
 
 import io.orchiddb.*;
-import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
 import org.duckdb.DuckDBFunctions;
@@ -9,7 +8,7 @@ import org.duckdb.DuckDBFunctions;
 /** DuckDB's own Java UDF API runs on the application's existing session. */
 public final class ClientFunctions {
   public static void main(String[] args) throws Exception {
-    var compiler = NativeSqlCompiler.load(Path.of(System.getProperty("orchiddb.native.path")));
+    var compiler = NativeSqlCompiler.load();
     try (var connection = DriverManager.getConnection("jdbc:duckdb:")) {
       try (var sql = connection.createStatement()) {
         sql.execute(

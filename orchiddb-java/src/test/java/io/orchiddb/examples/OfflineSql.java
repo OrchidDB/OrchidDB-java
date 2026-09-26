@@ -1,13 +1,12 @@
 package io.orchiddb.examples;
 
 import io.orchiddb.*;
-import java.nio.file.Path;
 import java.util.*;
 
 /** No DuckDB/JDBC connection is created. Only schema metadata enters the compiler. */
 public final class OfflineSql {
   public static void main(String[] args) {
-    var compiler = NativeSqlCompiler.load(Path.of(System.getProperty("orchiddb.native.path")));
+    var compiler = NativeSqlCompiler.load();
     var source = Source.table("warehouse", "public", "people");
     var mapping =
         new GraphMapping(

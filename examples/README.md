@@ -1,6 +1,6 @@
 # Runnable Java examples
 
-For use in your own application, follow [Install from Maven Central](../README.md#install-from-maven-central) and call `NativeSqlCompiler.load()`. Maven supplies the packaged compiler automatically. The commands below are for running examples from a source checkout.
+For use in your own application, follow [Install from Maven Central](../README.md#install-from-maven-central) and call `NativeSqlCompiler.load()`. Maven supplies the packaged compiler automatically. The launchers use the standalone `examples/pom.xml` to resolve the published 0.1.0 dependencies. The compiler package supports macOS ARM64 JVMs.
 
 Run these commands from `~/orchiddb/orchiddb-java` with Java 17 or newer. On macOS, set `export JAVA_HOME=$(/usr/libexec/java_home -v 17)` first.
 
@@ -13,8 +13,8 @@ Run these commands from `~/orchiddb/orchiddb-java` with Java 17 or newer. On mac
 | SQL compilation without executing a database | [OfflineSql.java](../orchiddb-java/src/test/java/io/orchiddb/examples/OfflineSql.java) | `./scripts/run-example.sh OfflineSql` |
 | Routing to multiple engine instances | [MultipleEngines.java](../orchiddb-java/src/test/java/io/orchiddb/examples/MultipleEngines.java) | `./scripts/run-example.sh MultipleEngines` |
 
-First-time build: `./scripts/build.sh` for the base library, or `./scripts/build-gremlin.sh` to include the optional Gremlin adapter. The existing sibling Rust checkout is required; see the [setup guide](../README.md).
+No sibling Rust checkout, native compiler build, or library path is required. The examples use your Maven-installed compiler and JDBC driver. The Gremlin launcher adds the optional published `orchiddb-gremlin` dependency.
 
-Example source lives under Maven test sources so its DuckDB driver does not enter the library's runtime dependencies. Every example has a `main` method and can also be run from an IDE using the test classpath and `-Dorchiddb.native.path` pointing to the compiled JNI library.
+Example source lives under Maven test sources for reuse by development builds; the standalone example POM compiles only example classes. Import `examples/pom.xml` into your IDE to run them against published packages.
 
 The Arrow launcher adds the JVM `--add-opens` option. See [Arrow setup and ownership](../docs/arrow.md) when running from your own application or IDE.
