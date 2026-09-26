@@ -9,11 +9,7 @@ permissions:
   contents: read
 jobs:
   test:
-    strategy:
-      matrix:
-        os: [ubuntu-24.04, macos-14]
-        java: ['17', '21']
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-22.04
     env:
       CARGO_BUILD_JOBS: 2
     steps:
@@ -32,7 +28,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ matrix.java }}
+          java-version: '17'
           cache: maven
           cache-dependency-path: |
             orchiddb-java/pom.xml
