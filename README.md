@@ -8,48 +8,33 @@ The application owns the engine: choose your DuckDB JDBC version, configure exte
 
 [Architecture review](docs/architecture.md) · [Maven Central release guide](docs/releases.md)
 
-## Build and try it
+## Install from Maven Central
 
-Keep the two repositories next to one another. The compatible core revision is recorded in `native/CORE_REVISION`; CI checks out that exact revision:
-
-```text
-~/orchiddb/
-  orchiddb/       # Rust compiler
-  orchiddb-java/  # Maven parent: orchiddb-java API module + optional orchiddb-gremlin
-```
-
-Requirements: Rust 1.93 or newer, a platform C toolchain, Maven 3.9+, and Java 17+. First builds compile DataFusion and can take several minutes. No DuckDB C++ build is needed. On macOS, select Java 17+ if your shell still defaults to Java 8:
-
-```sh
-export JAVA_HOME=$(/usr/libexec/java_home -v 21)
-cd ~/orchiddb/orchiddb-java
-./scripts/build.sh
-./scripts/run-example.sh ArrowBatches
-./scripts/run-example.sh BringYourOwnDuckDb
-./scripts/run-example.sh ClientFunctions
-./scripts/run-example.sh OfflineSql
-./scripts/run-example.sh MultipleEngines
-./scripts/check-dependencies.sh
-```
-
-`build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `orchiddb-java/target/orchiddb-java-0.1.0-SNAPSHOT.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.
-
-To install the development JAR in your local Maven repository, run `mvn install` after building. These coordinates are local development coordinates, not a published Maven Central package:
+Use Java 17+ and add these dependencies. Version 0.1.0 includes a compiler package for **macOS ARM64 (Apple Silicon)** only; Linux, Windows and Intel Mac compiler packages are not published for this version.
 
 ```xml
 <dependency>
   <groupId>com.orchiddb</groupId>
   <artifactId>orchiddb-java</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.1.0</version>
+</dependency>
+<dependency>
+  <groupId>com.orchiddb</groupId>
+  <artifactId>orchiddb-java</artifactId>
+  <version>0.1.0</version>
+  <classifier>macos-aarch64</classifier>
+  <scope>runtime</scope>
 </dependency>
 ```
 
-Add your chosen JDBC driver separately. DuckDB JDBC appears only in this project's **test** dependencies so examples can run. The base JAR depends on Jackson and Arrow vectors; the application supplies its Arrow memory implementation and any driver-specific export support. Load your own compiler with `NativeSqlCompiler.load(Path)`, or use `load()` with a matching platform-classifier JAR as described in the [release guide](docs/releases.md). Classpath loading verifies and extracts the installed compiler; it never downloads code or contacts a database.
+Maven downloads both JARs. `NativeSqlCompiler.load()` automatically verifies, extracts and loads the packaged compiler. No manual binary download, native library path, Rust installation or compiler build is required to use the published package. The classifier must match your JVM's OS and architecture.
+
+Add your chosen JDBC driver separately. DuckDB JDBC appears only in this project's **test** dependencies so examples can run. The base JAR depends on Jackson and Arrow vectors; the application supplies its Arrow memory implementation and any driver-specific export support. See the [Arrow guide](docs/arrow.md). For native Java Gremlin traversals, also add `com.orchiddb:orchiddb-gremlin:0.1.0`.
 
 ## Bring your own DuckDB
 
 ```java
-var compiler = NativeSqlCompiler.load(Path.of("/absolute/path/liborchiddb_java.dylib"));
+var compiler = NativeSqlCompiler.load();
 var people = Source.table("lake", "people");
 var friendships = Source.table("lake", "knows");
 var mapping = new GraphMapping(
@@ -160,3 +145,29 @@ scalar results and rejects unsupported traversal semantics explicitly.
 
 Build and run its example with `./scripts/build-gremlin.sh` and
 `./scripts/run-gremlin-example.sh`.
+
+## Build from source (contributors)
+
+Keep the two repositories next to one another. The compatible core revision is recorded in `native/CORE_REVISION`; CI checks out that exact revision:
+
+```text
+~/orchiddb/
+  orchiddb/       # Rust compiler
+  orchiddb-java/  # Maven parent: orchiddb-java API module + optional orchiddb-gremlin
+```
+
+Requirements: Rust 1.93 or newer, a platform C toolchain, Maven 3.9+, and Java 17+. First builds compile DataFusion and can take several minutes. No DuckDB C++ build is needed. On macOS, select Java 17+ if your shell still defaults to Java 8:
+
+```sh
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)
+cd ~/orchiddb/orchiddb-java
+./scripts/build.sh
+./scripts/run-example.sh ArrowBatches
+./scripts/run-example.sh BringYourOwnDuckDb
+./scripts/run-example.sh ClientFunctions
+./scripts/run-example.sh OfflineSql
+./scripts/run-example.sh MultipleEngines
+./scripts/check-dependencies.sh
+```
+
+`build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `orchiddb-java/target/orchiddb-java-0.1.0.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.

@@ -1,5 +1,7 @@
 # Runnable Java examples
 
+For use in your own application, follow [Install from Maven Central](../README.md#install-from-maven-central) and call `NativeSqlCompiler.load()`. Maven supplies the packaged compiler automatically. The commands below are for running examples from a source checkout.
+
 Run these commands from `~/orchiddb/orchiddb-java` with Java 17 or newer. On macOS, set `export JAVA_HOME=$(/usr/libexec/java_home -v 17)` first.
 
 | Example | Source | Run |
