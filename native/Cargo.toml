@@ -15,3 +15,9 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [profile.dev]
 debug = 0
+
+# Match the shared compiler profile; JNI error handling requires unwinding.
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
