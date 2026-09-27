@@ -332,4 +332,23 @@ class IntegrationTest {
       assertFalse(result.next());
     }
   }
+
+  @Test
+  void rdfRulesUseApplicationColumnsWithoutTypeRoot() throws Exception {
+    var rule =
+        Map.<String, Object>of(
+            "table", PEOPLE.sql(SqlDialect.DUCKDB),
+            "subject",
+                Map.of("kind", "template", "prefix", "urn:person:", "columns", List.of("id")),
+            "predicate", Map.of("kind", "constant", "value", "urn:name"),
+            "object", Map.of("kind", "literal", "column", "name"));
+    assertEquals(
+        List.of("Ada", "Grace", "O'Reilly 🪷"),
+        values(
+            graph.query(
+                Query.sparql(
+                    "SELECT ?name WHERE {?s <urn:name> ?name} ORDER BY ?name",
+                    List.of(rule),
+                    "default"))));
+  }
 }

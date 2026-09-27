@@ -50,6 +50,8 @@ public final class NativeSqlCompiler implements SqlCompiler {
       request.put("query", r.query().text());
       request.put("parameters", r.query().parameters());
       request.put("ontology", r.query().ontology());
+      if (!r.query().rdf().isEmpty()) request.put("rdf", r.query().rdf());
+      if (!r.query().dataset().equals("default")) request.put("dataset", r.query().dataset());
       request.put(
           "tables",
           r.schemas().entrySet().stream()

@@ -171,3 +171,9 @@ cd ~/orchiddb/orchiddb-java
 ```
 
 `build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `orchiddb-java/target/orchiddb-java-0.1.0.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.
+
+`Query.sparql(text, rdfRules, dataset)` accepts relational RDF rules as immutable
+maps. Each rule names a registered table and subject/predicate/object term
+mappings, with an optional graph. The existing ontology overload remains
+available. Relational RDF rules require the corresponding shared-mapping native
+compiler build and query the same caller-owned connection.

@@ -3,11 +3,23 @@ package io.orchiddb;
 import java.util.*;
 
 public record Query(
-    String language, String text, Map<String, Object> parameters, Ontology ontology) {
+    String language,
+    String text,
+    Map<String, Object> parameters,
+    Ontology ontology,
+    List<Map<String, Object>> rdf,
+    String dataset) {
+  public Query(String language, String text, Map<String, Object> parameters, Ontology ontology) {
+    this(language, text, parameters, ontology, List.of(), "default");
+  }
+
+  @SuppressWarnings("unchecked")
   public Query {
     Checks.name(language);
     Checks.name(text);
     Objects.requireNonNull(ontology);
+    Checks.name(dataset);
+    rdf = rdf.stream().map(rule -> (Map<String, Object>) freeze(rule)).toList();
     var copy = new TreeMap<String, Object>();
     parameters.forEach((k, v) -> copy.put(Checks.name(k), freeze(v)));
     parameters = Collections.unmodifiableMap(copy);
@@ -50,6 +62,10 @@ public record Query(
 
   public static Query gremlin(String text) {
     return new Query("gremlin", text, Map.of(), Ontology.EMPTY);
+  }
+
+  public static Query sparql(String text, List<Map<String, Object>> rdf, String dataset) {
+    return new Query("sparql", text, Map.of(), Ontology.EMPTY, rdf, dataset);
   }
 
   public static Query sparql(String text, Ontology ontology) {
