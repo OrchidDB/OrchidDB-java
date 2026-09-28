@@ -12,6 +12,13 @@ import org.apache.arrow.vector.types.pojo.Schema;
 
 /** JDBC execution adapter. Borrowing preserves the exact session supplied by the application. */
 public final class JdbcEngine implements ExecutionEngine {
+  private static final java.util.concurrent.ScheduledExecutorService STATISTICS_TIMER =
+      java.util.concurrent.Executors.newSingleThreadScheduledExecutor(
+          r -> {
+            var thread = new Thread(r, "orchiddb-statistics-deadlines");
+            thread.setDaemon(true);
+            return thread;
+          });
   private final String id;
   private final SqlDialect dialect;
   private final Connection borrowed;
@@ -234,6 +241,73 @@ public final class JdbcEngine implements ExecutionEngine {
       }
     }
 
+    public QueryResult readStatistics(StatisticsRead request) throws SQLException {
+      checkOpen();
+      var statement = connection.createStatement();
+      var owner = Thread.currentThread();
+      var expired = new AtomicBoolean();
+      long deadline = System.nanoTime() + request.timeoutMillis() * 1_000_000L;
+      var cancellation =
+          STATISTICS_TIMER.scheduleAtFixedRate(
+              () -> {
+                if (owner.isInterrupted() || System.nanoTime() >= deadline) {
+                  expired.set(true);
+                  try {
+                    statement.cancel();
+                  } catch (SQLException ignored) {
+                  }
+                }
+              },
+              0,
+              20,
+              java.util.concurrent.TimeUnit.MILLISECONDS);
+      try {
+        statement.setMaxRows((int) Math.min(Integer.MAX_VALUE, request.maxRows()));
+        statement.setFetchSize((int) Math.min(256, request.maxRows()));
+        try {
+          statement.setQueryTimeout((int) Math.max(1, (request.timeoutMillis() + 999) / 1000));
+        } catch (SQLFeatureNotSupportedException ignored) {
+          /* Cancellation timer enforces deadline. */
+        }
+        var rows = statement.executeQuery(request.sql());
+        var cursor = new Cursor(statement, rows, () -> cancellation.cancel(false));
+        cursors.add(cursor);
+        return new QueryResult() {
+          private long count;
+
+          public List<String> columns() {
+            return cursor.columns();
+          }
+
+          public boolean next() throws SQLException {
+            if (expired.get() || owner.isInterrupted())
+              throw new SQLException("Statistics read cancelled or timed out");
+            if (count >= request.maxRows()) return false;
+            boolean more = cursor.next();
+            if (more) count++;
+            return more;
+          }
+
+          public Object get(int column) throws SQLException {
+            return cursor.get(column);
+          }
+
+          public void close() throws SQLException {
+            cancellation.cancel(false);
+            cursor.close();
+          }
+        };
+      } catch (SQLException | RuntimeException | Error failure) {
+        cancellation.cancel(false);
+        try {
+          statement.close();
+        } catch (SQLException cleanup) {
+          failure.addSuppressed(cleanup);
+        }
+        throw failure;
+      }
+    }
+
     public void close() throws SQLException {
       if (closed) return;
       closed = true;
@@ -322,8 +396,14 @@ public final class JdbcEngine implements ExecutionEngine {
       private final ResultSet rows;
       private final List<String> columns;
       private boolean closed;
+      private final Runnable onClose;
 
       Cursor(Statement statement, ResultSet rows) throws SQLException {
+        this(statement, rows, () -> {});
+      }
+
+      Cursor(Statement statement, ResultSet rows, Runnable onClose) throws SQLException {
+        this.onClose = onClose;
         this.statement = statement;
         this.rows = rows;
         var labels = new ArrayList<String>();
@@ -349,6 +429,7 @@ public final class JdbcEngine implements ExecutionEngine {
       public void close() throws SQLException {
         if (closed) return;
         closed = true;
+        onClose.run();
         cursors.remove(this);
         try {
           rows.close();

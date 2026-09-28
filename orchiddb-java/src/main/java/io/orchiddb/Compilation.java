@@ -9,7 +9,18 @@ public record Compilation(
     GraphMapping mapping,
     Map<Source, List<Column>> schemas,
     List<FunctionSignature> functions,
-    Query query) {
+    Query query,
+    String statisticsCatalog) {
+  public Compilation(
+      String engine,
+      SqlDialect dialect,
+      GraphMapping mapping,
+      Map<Source, List<Column>> schemas,
+      List<FunctionSignature> functions,
+      Query query) {
+    this(engine, dialect, mapping, schemas, functions, query, null);
+  }
+
   public Compilation {
     Checks.name(engine);
     Objects.requireNonNull(dialect);

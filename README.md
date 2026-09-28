@@ -177,3 +177,39 @@ maps. Each rule names a registered table and subject/predicate/object term
 mappings, with an optional graph. The existing ontology overload remains
 available. Relational RDF rules require the corresponding shared-mapping native
 compiler build and query the same caller-owned connection.
+
+### Generate and reuse statistics
+
+Statistics are optional. Generate them explicitly through the same graph/session you use for
+queries; the shared Rust coordinator chooses bounded reads and computes the catalog. There
+are no collection tiers or tuning profiles. Generation may make several SQL calls.
+
+```java
+try (var graph = orchid.graph(mapping)) {
+  String report = graph.generateStatistics();
+  graph.saveStatistics(Path.of("statistics.json"));
+  var plan = graph.plan(Query.cypher("MATCH (p:Person) WHERE p.age = 36 RETURN p.name"));
+  System.out.println(plan.diagnosticsJson());
+  graph.clearStatistics();
+  graph.loadStatistics(Path.of("statistics.json"));
+}
+```
+
+Subsequent Cypher, Gremlin, and SPARQL compilations use the retained native catalog automatically.
+Plan-cache keys include the catalog identity. Regeneration installs a replacement only after
+successful completion; interruption leaves the previous snapshot active. Clear or close the graph
+to release its catalog. No connection is closed by graph close, and no background refresh runs.
+Call `generateStatistics(metadataQuery)` to include a SPARQL query's RDF rules and dataset metadata.
+
+The report records partial coverage when reads cannot be supported or complete within the shared
+work budget. JDBC collection applies row limits and deadline/thread-interruption cancellation;
+the JDBC driver must honor `Statement.cancel()`. Adapters without bounded collection support
+report missing coverage instead of falling back to unrestricted scans. Persisted statistics are
+estimates, not constraints: regenerate explicitly after substantial data changes, and retain
+snapshots only where their sampled values can be stored safely.
+
+Applications owning their sessions can use `Statistics.generate(compiler, compilation, session)`
+and retain the returned `AutoCloseable` catalog. Pass its `catalogId()` as the final `Compilation`
+argument when compiling directly. `SqlCompiler.statisticsCommand(String)` exposes the same JSON
+protocol for custom transports; `ExecutionEngine.Session.readStatistics(StatisticsRead)` is the
+only additional execution seam. Clients do not implement sampling policy or estimators.

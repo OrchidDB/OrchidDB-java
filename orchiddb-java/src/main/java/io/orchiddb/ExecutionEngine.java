@@ -29,6 +29,12 @@ public interface ExecutionEngine {
       return executeArrow(query).rows();
     }
 
+    /** Execute a bounded collection request; unsupported adapters report missing coverage. */
+    default QueryResult readStatistics(StatisticsRead request) throws SQLException {
+      throw new java.sql.SQLFeatureNotSupportedException(
+          "This engine has no bounded statistics reader");
+    }
+
     void close() throws SQLException;
   }
 }

@@ -46,3 +46,19 @@ parent allocators retain caller ownership. See [Arrow contracts](arrow.md).
 Arrow vectors are now a public API dependency. DuckDB JDBC, Arrow's C Data bridge
 and the test allocator remain test dependencies. The existing SQL-only compiler
 and JNI transport have no result-data responsibility.
+
+
+## Optional generated statistics
+
+`Statistics.generate` drives the core coordinator through begin/submit/finish calls using bounded
+session reads. Rust owns acquisition policy, summaries, estimation, and catalog caching. Java
+retains only an immutable serialized snapshot, coverage report, and native catalog identity.
+`Graph.generateStatistics` replaces its catalog atomically. The identity is part of `Compilation`
+and therefore the plan cache key. Compilation sends the identity rather than the catalog contents.
+`CompiledQuery.diagnosticsJson` retains all native planning diagnostics, including statistics and
+representation choices. JNI runs statistics commands on the same bounded runtime as compilation.
+
+JDBC's collection reader applies result limits, a scheduled cancellation deadline, and thread
+interruption detection. Applications providing their own `Session` implement `readStatistics` or
+receive partial-coverage reports. No automatic full-scan fallback is performed by Java. The
+caller owns transaction consistency and decides when to regenerate or clear a snapshot.

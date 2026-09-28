@@ -33,10 +33,11 @@ public final class OrchidDB {
     return new Graph(engine, mapping, List.copyOf(functions));
   }
 
-  public final class Graph {
+  public final class Graph implements AutoCloseable {
     private final ExecutionEngine engine;
     private final GraphMapping mapping;
     private final List<FunctionSignature> functions;
+    private Statistics statistics;
 
     private Graph(ExecutionEngine e, GraphMapping m, List<FunctionSignature> f) {
       engine = e;
@@ -44,11 +45,17 @@ public final class OrchidDB {
       functions = f;
     }
 
-    private CompiledQuery compile(ExecutionEngine.Session session, Query query)
+    private synchronized CompiledQuery compile(ExecutionEngine.Session session, Query query)
         throws SQLException {
       var request =
           new Compilation(
-              engine.id(), engine.dialect(), mapping, session.schemas(mapping), functions, query);
+              engine.id(),
+              engine.dialect(),
+              mapping,
+              session.schemas(mapping),
+              functions,
+              query,
+              statistics == null ? null : statistics.catalogId());
       var plan = cache.get(request);
       if (plan == null) {
         plan = compiler.compile(request);
@@ -62,6 +69,56 @@ public final class OrchidDB {
     private void validate(CompiledQuery plan) {
       if (!plan.engine().equals(engine.id()) || !plan.dialect().equals(engine.dialect()))
         throw new PlanningException("Compiler/cache returned a plan for another engine");
+    }
+
+    /** Generate once; successful regeneration atomically replaces the previous snapshot. */
+    public synchronized String generateStatistics() throws SQLException {
+      return generateStatistics(Query.cypher("RETURN 1"));
+    }
+
+    /** Include RDF dataset/rule metadata when generating statistics for a SPARQL mapping. */
+    public synchronized String generateStatistics(Query metadataQuery) throws SQLException {
+      try (var session = engine.openSession()) {
+        var metadata =
+            new Compilation(
+                engine.id(),
+                engine.dialect(),
+                mapping,
+                session.schemas(mapping),
+                functions,
+                metadataQuery);
+        var generated = Statistics.generate(compiler, metadata, session);
+        replaceStatistics(generated);
+        return generated.reportJson();
+      }
+    }
+
+    public synchronized void saveStatistics(java.nio.file.Path path) throws java.io.IOException {
+      if (statistics == null) throw new IllegalStateException("No statistics generated");
+      statistics.save(path);
+    }
+
+    public synchronized void loadStatistics(java.nio.file.Path path) throws java.io.IOException {
+      replaceStatistics(Statistics.load(compiler, path));
+    }
+
+    public synchronized String statisticsSnapshotJson() {
+      return statistics == null ? null : statistics.snapshotJson();
+    }
+
+    public synchronized void clearStatistics() {
+      replaceStatistics(null);
+    }
+
+    private void replaceStatistics(Statistics replacement) {
+      var previous = statistics;
+      statistics = replacement;
+      if (previous != null) previous.close();
+    }
+
+    /** Release this graph's statistics handle; caller-owned engines remain open. */
+    public void close() {
+      clearStatistics();
     }
 
     public CompiledQuery plan(Query query) throws SQLException {

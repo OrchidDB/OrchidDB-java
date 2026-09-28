@@ -5,4 +5,6 @@ public final class NativeBridge {
   private NativeBridge() {}
 
   public static native String compileJson(String request);
+
+  public static native String statisticsJson(String request);
 }
