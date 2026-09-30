@@ -8,9 +8,14 @@ public record Query(
     Map<String, Object> parameters,
     Ontology ontology,
     List<Map<String, Object>> rdf,
-    String dataset) {
+    String dataset,
+    Authorization authorization) {
   public Query(String language, String text, Map<String, Object> parameters, Ontology ontology) {
-    this(language, text, parameters, ontology, List.of(), "default");
+    this(language, text, parameters, ontology, List.of(), "default", null);
+  }
+  public Query(String language, String text, Map<String, Object> parameters, Ontology ontology,
+               List<Map<String, Object>> rdf, String dataset) {
+    this(language, text, parameters, ontology, rdf, dataset, null);
   }
 
   @SuppressWarnings("unchecked")
@@ -58,6 +63,10 @@ public record Query(
 
   public static Query cypher(String text, Map<String, Object> parameters) {
     return new Query("cypher", text, parameters, Ontology.EMPTY);
+  }
+
+  public Query as(Authorization principal) {
+    return new Query(language, text, parameters, ontology, rdf, dataset, Objects.requireNonNull(principal));
   }
 
   public static Query gremlin(String text) {

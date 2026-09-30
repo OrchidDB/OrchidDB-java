@@ -111,6 +111,39 @@ FROM lake.analytics.friendships;
 
 This catalog example needs your real Iceberg catalog and credentials; it is not part of the offline integration tests. Session-local views work because no second connection is opened. Keep complex extension-specific columns out of mapped source views, or cast them to supported types.
 
+## Permission filtering
+
+Protect a mapped node label with a caller-maintained permission relation. Each query supplies its principal; the compiler places an `IN` membership filter at the node source, before graph traversal and projection. DuckDB plans it as a hash semi-join:
+
+```java
+var grants = PermissionRelation.flat(
+    Source.table("lake", "security", "effective_grants"), "document", "view");
+var mapping = new GraphMapping(
+    List.of(NodeMapping.node("Document", documents, "id").protectWith(grants)),
+    List.of());
+var graph = db.graph(mapping);
+var query = Query.cypher("MATCH (d:Document) RETURN d.title AS title")
+    .as(new Authorization("user", "alice"));
+```
+
+Multiple scopes can protect a row at different resource granularities. For example, keep direct document grants and project grants in one effective-grants relation, then match each against the corresponding node source column:
+
+```java
+var grantSource = Source.table("lake", "security", "effective_grants");
+var documentGrants = PermissionRelation.flat(grantSource, "document", "view");
+var projectGrants = PermissionRelation.flat(grantSource, "project", "view");
+var documents = NodeMapping.node("Document", documentTable, "id")
+    .property("project_id", "project_id")
+    .protectWith(documentGrants)
+    .protectWith("project_id", projectGrants);
+```
+
+The compiler combines these scopes as an OR of membership predicates, so a row appears once even if multiple scopes authorize it. The scope column must be mapped as a node property so it is available in the source schema. Group or team grants work the same way once the permission relation contains effective grants for the principal and chosen resource type.
+
+The default flat relation columns are `resource_type`, `resource_rel`, `resource_id`, `subject_type`, `subject_rel`, and `subject_id`; use the full `PermissionRelation` constructor or the column-selecting `flat` overload for a different schema. Direct principal membership matches the empty `subject_rel`. For DuckDB and integer graph IDs, the compiler safely casts canonical numeric permission IDs to the graph ID type, keeping the Iceberg-side key typed so the engine can apply dynamic scan filters; nonnumeric and noncanonical IDs do not match. The relation must contain effective grants for the configured resource type, permission, and principal, including any group or nested-set resolution required by the source permission model. Normalize or resolve raw relationship data into that relation in the application or a source view. Duplicate grant rows are safe: the filter preserves each graph row once.
+
+The permission source is included in schema discovery and must be on the same engine as the graph. A query against a graph with protected node mappings fails closed if no principal is supplied. Applications own Materialize download/watch synchronization, revision consistency, and Iceberg publication; OrchidDB only compiles the relation into the graph query. Dynamic Iceberg pruning depends on table ordering/layout and the permission key range, so inspect plans and measure on the target data.
+
 ## Queries and caching
 
 The library compiles read queries. Mutations, external SERVICE access, opaque extensions and plans requiring engine-managed materialization fail during planning; there is no hidden interpreter/database fallback. Language conformance of the full OrchidDB runtime does **not** imply every construct lowers to standalone SQL. Unsupported relational constructs report `PlanningException`.
