@@ -185,6 +185,7 @@ public final class JdbcEngine implements ExecutionEngine {
 
     public ArrowResult executeArrow(CompiledQuery query) throws SQLException {
       checkOpen();
+      FederatedQuery.requireSingleEngine(query);
       if (!query.engine().equals(id) || !query.dialect().equals(dialect))
         throw new SQLException("Plan is bound to a different engine or dialect");
       if (arrowExporter == null)
@@ -219,6 +220,7 @@ public final class JdbcEngine implements ExecutionEngine {
     }
 
     public QueryResult execute(CompiledQuery query) throws SQLException {
+      FederatedQuery.requireSingleEngine(query);
       if (arrowExporter != null) return executeArrow(query).rows();
       checkOpen();
       if (!query.engine().equals(id) || !query.dialect().equals(dialect))

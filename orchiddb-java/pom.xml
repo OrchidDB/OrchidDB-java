@@ -8,6 +8,7 @@
   <artifactId>orchiddb-java</artifactId>
   <name>OrchidDB Java</name>
   <dependencies>
+    <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><version>42.7.7</version><scope>test</scope></dependency>
     <dependency>
       <groupId>org.apache.arrow</groupId><artifactId>arrow-vector</artifactId><version>${arrow.version}</version>
     </dependency>

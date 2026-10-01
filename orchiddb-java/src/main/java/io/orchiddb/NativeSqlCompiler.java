@@ -131,6 +131,27 @@ public final class NativeSqlCompiler implements SqlCompiler {
     return request;
   }
 
+  /** Compile the shared JSON protocol, including engine and table routing. */
+  public CompiledQuery compileJson(String requestJson) {
+    try {
+      var request = JSON.readTree(requestJson);
+      var result = JSON.readTree(NativeBridge.compileJson(requestJson));
+      if (result.path("version").asInt() != 1
+          || !result.path("dialect").asText().equals(request.path("dialect").asText()))
+        throw new PlanningException("Native compiler protocol mismatch");
+      var fields = new ArrayList<String>();
+      result.path("fields").forEach(f -> fields.add(f.asText()));
+      return new CompiledQuery(
+          request.path("execution_engine").asText("default"),
+          new SqlDialect(result.path("dialect").asText()),
+          result.path("sql").asText(),
+          fields,
+          result.toString());
+    } catch (java.io.IOException e) {
+      throw new PlanningException("Invalid compiler response", e);
+    }
+  }
+
   public String statisticsCommand(String command) {
     return NativeBridge.statisticsJson(command);
   }
