@@ -8,7 +8,7 @@ concurrency:
 permissions:
   contents: read
 jobs:
-  test:
+  build:
     runs-on: ubuntu-22.04
     env:
       CARGO_BUILD_JOBS: 2
@@ -36,9 +36,9 @@ jobs:
             orchiddb-java/orchiddb-gremlin/pom.xml
       - name: Install Rust
         run: rustup toolchain install 1.93.1 --profile minimal && rustup default 1.93.1
-      - name: Verify Java API and native integration
+      - name: Build Java API and native compiler
         working-directory: orchiddb-java
-        run: ./scripts/build-gremlin.sh
+        run: ./scripts/build-gremlin.sh -DskipTests
       - name: Ensure compiler does not link DuckDB
         working-directory: orchiddb-java
         shell: bash

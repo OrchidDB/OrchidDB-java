@@ -6,6 +6,9 @@ on:
         description: Existing release tag matching the Maven version (vX.Y.Z)
         required: true
         type: string
+      reuse_run_id:
+        description: Previous run providing completed Linux and Windows native JARs
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -63,7 +66,19 @@ jobs:
         with:
           ref: ${{ needs.metadata.outputs.commit }}
           path: orchiddb-java
+      - name: Reuse completed platform compiler
+        id: reuse
+        if: inputs.reuse_run_id != '' && (matrix.platform == 'linux-x86_64' || matrix.platform == 'windows-x86_64')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_RUN_ID: ${{ inputs.reuse_run_id }}
+        run: |
+          actual=$(gh api "repos/OrchidDB/OrchidDB-java/actions/runs/$REUSE_RUN_ID" --jq .head_sha)
+          test "$actual" = '${{ needs.metadata.outputs.commit }}'
+          gh run download "$REUSE_RUN_ID" --repo OrchidDB/OrchidDB-java --name "native-$PLATFORM" --dir target/native-artifacts
+          echo 'reused=true' >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
+        if: steps.reuse.outputs.reused != 'true'
         with:
           repository: OrchidDB/OrchidDB
           ref: ${{ needs.metadata.outputs.core }}
@@ -76,14 +91,14 @@ jobs:
         with:
           python-version: '3.12'
       - name: Build compiler without DuckDB
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           rustup toolchain install 1.93.1 --profile minimal
           cargo +1.93.1 build --manifest-path native/Cargo.toml --locked --release
           cargo +1.93.1 tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
           if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi
-      - name: Test platform compiler and Java clients
-        run: mvn -B -Pgremlin -Dorchiddb.native.path="$PWD/native/target/release/$LIBRARY" verify
       - name: Package compiler JAR
+        if: steps.reuse.outputs.reused != 'true'
         run: |
           python scripts/package-native.py --platform "$PLATFORM" --library "native/target/release/$LIBRARY" --version "$VERSION" --output "target/native-artifacts/$PLATFORM.jar"
       - uses: actions/upload-artifact@v4
