@@ -1,6 +1,6 @@
 # Runnable Java examples
 
-For use in your own application, follow [Install from Maven Central](../README.md#install-from-maven-central) and call `NativeSqlCompiler.load()`. Maven supplies the packaged compiler automatically. The launchers use the standalone `examples/pom.xml` to resolve the published 0.1.0 dependencies. The compiler package supports macOS ARM64 JVMs.
+For use in your own application, follow [Install from Maven Central](../README.md#install-from-maven-central) and call `NativeSqlCompiler.load()`. Maven supplies the packaged compiler automatically. The launchers use the standalone `examples/pom.xml` to resolve version 0.2.0 dependencies. Keep API and native compiler versions aligned. The compiler package supports macOS ARM64 JVMs.
 
 Run these commands from `~/orchiddb/orchiddb-java` with Java 17 or newer. On macOS, set `export JAVA_HOME=$(/usr/libexec/java_home -v 17)` first.
 

@@ -1,12 +1,14 @@
 # OrchidDB for Java
 
-**Start here: [Runnable examples](examples/README.md)** — Arrow batches, Gremlin, existing DuckDB connections, UDFs, SQL-only compilation, and multiple engines.
+**Start here: [Runnable examples](examples/README.md)**. Arrow batches, Gremlin, existing DuckDB connections, UDFs, SQL-only compilation, and multiple engines.
 
-Compile Cypher, Gremlin and mapped SPARQL queries to SQL, then execute them on **your existing database connection**. This library contains no DuckDB database, driver, connection pool, SQLg layer, or result cache. Its JNI library contains the OrchidDB compiler, built with `default-features = false`.
+Compile Cypher, Gremlin, and mapped SPARQL queries to SQL, then execute them on **your existing database connection**. This library contains no DuckDB database, driver, connection pool, SQLg layer, or result cache. Its JNI library contains the OrchidDB compiler, built with `default-features = false`.
 
 The application owns the engine: choose your DuckDB JDBC version, configure extensions and Iceberg credentials, register UDFs, configure caching, and decide when to commit. OrchidDB reads source metadata and runs the generated SELECT on the **same connection**, including temporary tables and functions. It never reopens a JDBC URL or rebuilds your views.
 
 [Architecture review](docs/architecture.md) · [Maven Central release guide](docs/releases.md)
+
+API descriptions below follow this checkout (0.2.0). The installation example uses the documented 0.1.0 release; newer APIs require a matching API JAR and native compiler.
 
 ## Install from Maven Central
 
@@ -113,13 +115,14 @@ This catalog example needs your real Iceberg catalog and credentials; it is not 
 
 ## Permission filtering
 
-Protect a mapped node label with a caller-maintained permission relation. Each query supplies its principal; the compiler places an `IN` membership filter at the node source, before graph traversal and projection. DuckDB plans it as a hash semi-join:
+Use `PermissionRelation` with effective grants from your chosen authorization system. `protectWith` attaches it to a node mapping; `Authorization` supplies the query principal. The compiler filters the node source before traversal and projection:
 
 ```java
 var grants = PermissionRelation.flat(
     Source.table("lake", "security", "effective_grants"), "document", "view");
 var mapping = new GraphMapping(
-    List.of(NodeMapping.node("Document", documents, "id").protectWith(grants)),
+    List.of(NodeMapping.node("Document", documents, "id")
+        .property("title", "title").protectWith(grants)),
     List.of());
 var graph = db.graph(mapping);
 var query = Query.cypher("MATCH (d:Document) RETURN d.title AS title")
@@ -142,7 +145,7 @@ The compiler combines these scopes as an OR of membership predicates, so a row a
 
 The default flat relation columns are `resource_type`, `resource_rel`, `resource_id`, `subject_type`, `subject_rel`, and `subject_id`; use the full `PermissionRelation` constructor or the column-selecting `flat` overload for a different schema. Direct principal membership matches the empty `subject_rel`. For DuckDB and integer graph IDs, the compiler safely casts canonical numeric permission IDs to the graph ID type, keeping the Iceberg-side key typed so the engine can apply dynamic scan filters; nonnumeric and noncanonical IDs do not match. The relation must contain effective grants for the configured resource type, permission, and principal, including any group or nested-set resolution required by the source permission model. Normalize or resolve raw relationship data into that relation in the application or a source view. Duplicate grant rows are safe: the filter preserves each graph row once.
 
-The permission source is included in schema discovery and must be on the same engine as the graph. A query against a graph with protected node mappings fails closed if no principal is supplied. Applications own Materialize download/watch synchronization, revision consistency, and Iceberg publication; OrchidDB only compiles the relation into the graph query. Dynamic Iceberg pruning depends on table ordering/layout and the permission key range, so inspect plans and measure on the target data.
+The permission source is included in schema discovery and must be on the same engine as the graph. A query against a graph with protected node mappings fails closed if no principal is supplied. Applications maintain the grants and choose their synchronization and consistency policy. OrchidDB does not require a particular authorization service. Dynamic Iceberg pruning depends on table ordering/layout and the permission key range, so inspect plans and measure on the target data.
 
 ## Queries and caching
 
@@ -160,11 +163,11 @@ Schema types: `boolean`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`
 
 `SqlCompiler`, `ExecutionEngine`, and `ExecutionEngine.Session` are separate interfaces. JDBC is one execution adapter; a future ClickHouse HTTP adapter can implement the session interface without exposing a JDBC connection. Dialect identity is separate from transport. The native compiler renders DuckDB and PostgreSQL SQL. Live JDBC integration checks exercise both engines, including mixed execution through `FederatedQuery.query`. Set `ORCHIDDB_TEST_PG_JDBC` to enable the PostgreSQL checks. ClickHouse compilation is explicitly unsupported today.
 
-Use `FederatedQuery.query` for mixed-engine requests. It coordinates SQL islands through caller-owned JDBC sessions, with typed values passed to the target engine. Applications retain connection and transaction ownership.
+The typed `Graph` API requires a single engine. For mixed-engine requests, use `FederatedQuery.query(compiler, requestJson, engines)` with the shared JSON mapping format. It runs source SQL islands, collects each transfer in memory, and binds typed rows into the target SQL without creating exchange tables. Close the returned `QueryResult` to release sessions. Applications retain connection and transaction ownership. See [FederatedQueryTest.java](orchiddb-java/src/test/java/io/orchiddb/FederatedQueryTest.java) for a complete request.
 
 ## Implementation references
 
-The separation of a Java API and native component follows [DuckDB Java](https://github.com/duckdb/duckdb-java). Caller-defined functions use its [official UDF API](https://github.com/duckdb/duckdb-java/blob/main/UDF.MD). The OrchidDB JNI boundary is a stateless, versioned JSON request/response with no database handles; planning runs on a bounded native worker pool with an independent stack. Rust panics become planning errors at the boundary.
+The separation of a Java API and native component follows [DuckDB Java](https://github.com/duckdb/duckdb-java). Caller-defined functions use its [official UDF API](https://github.com/duckdb/duckdb-java/blob/main/UDF.MD). The OrchidDB JNI boundary uses versioned JSON requests and responses with no database handles; planning runs on a bounded native worker pool with an independent stack. Rust panics become planning errors at the boundary.
 
 See [LICENSE.md](LICENSE.md) for the project's license terms.
 
@@ -203,7 +206,7 @@ cd ~/orchiddb/orchiddb-java
 ./scripts/check-dependencies.sh
 ```
 
-`build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `orchiddb-java/target/orchiddb-java-0.1.0.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.
+`build.sh` builds the native compiler and runs integration tests. `check-dependencies.sh` verifies the driver-free dependency graph. The resulting JAR is `orchiddb-java/target/orchiddb-java-0.2.0.jar`. Native output is `native/target/debug/liborchiddb_java.dylib` on macOS or `liborchiddb_java.so` on Linux. A release native build uses `cargo build --manifest-path native/Cargo.toml --locked --release`; load the library from `native/target/release/` instead. Native binaries must match your JVM's OS and architecture. On Windows, build with Cargo, then run Maven with `-Dorchiddb.native.path=C:\absolute\path\orchiddb_java.dll`.
 
 `Query.sparql(text, rdfRules, dataset)` accepts relational RDF rules as immutable
 maps. Each rule names a registered table and subject/predicate/object term

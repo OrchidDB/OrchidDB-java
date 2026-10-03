@@ -15,13 +15,13 @@ Requires the same Java 17+, Rust, and sibling core checkout as the base library.
 
 On macOS, set `JAVA_HOME=$(/usr/libexec/java_home -v 17)` if the shell selects an older JDK. The example creates tables in a caller-owned DuckDB connection, maps them, and prints `Ada knows [Grace]` and `People: 2`. It then confirms the connection remains open.
 
-The base library builds independently with `./scripts/build.sh`. The adapter inherits the shared Maven parent and is included in reactor builds with `-Pgremlin`; it adds TinkerPop only when explicitly selected. Artifacts are not yet published to Maven Central. After building, install the adapter locally with `mvn -Pgremlin install` and use:
+The base library builds independently with `./scripts/build.sh`. The adapter inherits the shared Maven parent and is included in reactor builds with `-Pgremlin`; it adds TinkerPop only when explicitly selected. For a local source build, install the adapter with `mvn -Pgremlin install` and use:
 
 ```xml
 <dependency>
   <groupId>com.orchiddb</groupId>
   <artifactId>orchiddb-gremlin</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.2.0</version>
 </dependency>
 ```
 
@@ -74,7 +74,7 @@ This first adapter buffers results and releases the statement/result/engine leas
 
 The default limit is 100,000 result rows. A traversal exceeding it fails; it never silently truncates. Set a different limit with `OrchidGremlin.traversal(graph, 10_000)` or constrain the query with `limit`/`range`. The limit counts rows, not bytes; very large scalar values still consume memory. True cursor streaming is future work.
 
-Duplicate SQL rows are preserved as distinct occurrences (traverser bulk 1); count and dedup are executed by OrchidDB. No client-side substitute graph is built. Federation and additional SQL dialect support follow the base engine's capabilities.
+Duplicate SQL rows are preserved as distinct occurrences (traverser bulk 1); count and dedup are executed by OrchidDB. No client-side substitute graph is built. This adapter uses the single-engine `Graph` API. Mixed-engine requests use the separate `FederatedQuery` JSON API.
 
 ## Verification and design references
 
