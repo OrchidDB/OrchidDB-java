@@ -21,5 +21,5 @@ for platform, library in module.PLATFORMS.items():
         assert props['version'] == a.version, platform + ': wrong version'
         assert props['coreRevision'] == (ROOT / 'native/CORE_REVISION').read_text().strip(), platform + ': wrong compiler'
         assert props['sha256'] == hashlib.sha256(jar.read(prefix+library)).hexdigest(), platform + ': wrong checksum'
-        assert jar.read('META-INF/LICENSE.md') == (ROOT / 'LICENSE.md').read_bytes()
+        assert jar.read('META-INF/LICENSE.md') == (ROOT / 'LICENSE.md').read_text(encoding='utf-8').encode('utf-8')
     print('Verified release artifact:', platform)

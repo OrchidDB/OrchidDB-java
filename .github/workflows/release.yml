@@ -1,18 +1,8 @@
-name: Stage Java release on Maven Central
-on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing release tag matching the Maven version (vX.Y.Z)
-        required: true
-        type: string
-      reuse_run_id:
-        description: Previous run providing completed Linux and Windows native JARs
-        default: ''
+name: Build and stage Java release
 permissions:
   contents: read
 concurrency:
-  group: java-central-${{ inputs.tag }}
+  group: java-${{ inputs.tag }}-${{ inputs.platform }}-${{ inputs.stage }}
   cancel-in-progress: false
 jobs:
   metadata:
@@ -22,138 +12,207 @@ jobs:
       core: ${{ steps.release.outputs.core }}
       commit: ${{ steps.release.outputs.commit }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: refs/tags/${{ inputs.tag }}
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - id: release
-        env:
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: python scripts/release-metadata.py
+    - uses: actions/checkout@v4
+      with:
+        ref: refs/tags/${{ inputs.tag }}
+        fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Validate staging inputs
+      env:
+        STAGE: ${{ inputs.stage }}
+        PUBLISH: ${{ inputs.publish }}
+        PLATFORM: ${{ inputs.platform }}
+        REUSE_RUNS: ${{ inputs.reuse_runs }}
+      run: |
+        python - <<'PYTHON'
+        import json, os
+        if os.environ['PUBLISH'] == 'true':
+            assert os.environ['STAGE'] == 'true', 'Publishing requires staging'
+        if os.environ['STAGE'] == 'true':
+            assert os.environ['PLATFORM'] == 'all', 'Staging requires all classifiers'
+            runs = json.loads(os.environ['REUSE_RUNS'])
+            assert set(runs) == {'linux-x86_64','macos-aarch64','macos-x86_64','windows-x86_64'}, 'Stage completed builds; do not rebuild the matrix'
+            assert all(str(run).isdigit() for run in runs.values())
+        PYTHON
+    - id: release
+      env:
+        RELEASE_TAG: ${{ inputs.tag }}
+      run: python scripts/release-metadata.py
   native:
     needs: metadata
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-22.04
-            platform: linux-x86_64
-            library: liborchiddb_java.so
-          - os: macos-14
-            platform: macos-aarch64
-            library: liborchiddb_java.dylib
-          - os: macos-15-intel
-            platform: macos-x86_64
-            library: liborchiddb_java.dylib
-          - os: windows-2022
-            platform: windows-x86_64
-            library: orchiddb_java.dll
+        include: ${{ fromJSON(inputs.platform == 'linux-x86_64' && '[{"os":"ubuntu-22.04","platform":"linux-x86_64","library":"liborchiddb_java.so"}]'
+          || inputs.platform == 'macos-aarch64' && '[{"os":"macos-14","platform":"macos-aarch64","library":"liborchiddb_java.dylib"}]' || inputs.platform
+          == 'macos-x86_64' && '[{"os":"macos-15-intel","platform":"macos-x86_64","library":"liborchiddb_java.dylib"}]' || inputs.platform ==
+          'windows-x86_64' && '[{"os":"windows-2022","platform":"windows-x86_64","library":"orchiddb_java.dll"}]' || '[{"os":"ubuntu-22.04","platform":"linux-x86_64","library":"liborchiddb_java.so"},{"os":"macos-14","platform":"macos-aarch64","library":"liborchiddb_java.dylib"},{"os":"macos-15-intel","platform":"macos-x86_64","library":"liborchiddb_java.dylib"},{"os":"windows-2022","platform":"windows-x86_64","library":"orchiddb_java.dll"}]')
+          }}
     runs-on: ${{ matrix.os }}
     env:
       CARGO_BUILD_JOBS: 2
       VERSION: ${{ needs.metadata.outputs.version }}
       PLATFORM: ${{ matrix.platform }}
       LIBRARY: ${{ matrix.library }}
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
     defaults:
       run:
         shell: bash
         working-directory: orchiddb-java
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.metadata.outputs.commit }}
-          path: orchiddb-java
-      - name: Reuse completed platform compiler
-        id: reuse
-        if: inputs.reuse_run_id != '' && (matrix.platform == 'linux-x86_64' || matrix.platform == 'windows-x86_64')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REUSE_RUN_ID: ${{ inputs.reuse_run_id }}
-        run: |
-          actual=$(gh api "repos/OrchidDB/OrchidDB-java/actions/runs/$REUSE_RUN_ID" --jq .head_sha)
-          test "$actual" = '${{ needs.metadata.outputs.commit }}'
-          gh run download "$REUSE_RUN_ID" --repo OrchidDB/OrchidDB-java --name "native-$PLATFORM" --dir target/native-artifacts
-          echo 'reused=true' >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        if: steps.reuse.outputs.reused != 'true'
-        with:
-          repository: OrchidDB/OrchidDB
-          ref: ${{ needs.metadata.outputs.core }}
-          path: orchiddb
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Build compiler without DuckDB
-        if: steps.reuse.outputs.reused != 'true'
-        run: |
-          rustup toolchain install 1.93.1 --profile minimal
-          cargo +1.93.1 build --manifest-path native/Cargo.toml --locked --release
-          cargo +1.93.1 tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
-          if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi
-      - name: Package compiler JAR
-        if: steps.reuse.outputs.reused != 'true'
-        run: |
-          python scripts/package-native.py --platform "$PLATFORM" --library "native/target/release/$LIBRARY" --version "$VERSION" --output "target/native-artifacts/$PLATFORM.jar"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: native-${{ matrix.platform }}
-          path: orchiddb-java/target/native-artifacts/${{ matrix.platform }}.jar
-          if-no-files-found: error
-          retention-days: 14
+    - name: Use canonical source line endings
+      working-directory: ${{ github.workspace }}
+      run: git config --global core.autocrlf false
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.metadata.outputs.commit }}
+        path: orchiddb-java
+    - name: Reuse completed platform compiler
+      id: reuse
+      if: inputs.reuse_runs != '{}'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REUSE_RUNS: ${{ inputs.reuse_runs }}
+      run: |
+        python - <<'PYTHON'
+        import json, os, subprocess
+        from pathlib import Path
+        run = json.loads(os.environ['REUSE_RUNS']).get(os.environ['PLATFORM'])
+        if run is None:
+            raise SystemExit(0)
+        assert str(run).isdigit()
+        subprocess.run(['gh','run','download',str(run),'--repo','OrchidDB/OrchidDB-java','--name','native-'+os.environ['PLATFORM'],'--dir','target/native-artifacts'],check=True)
+        source = Path('target/native-artifacts/SOURCE_COMMIT').read_text().strip()
+        assert source == subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+        with open(os.environ['GITHUB_OUTPUT'],'a') as output:
+            output.write('reused=true\n')
+        PYTHON
+    - uses: actions/checkout@v4
+      if: steps.reuse.outputs.reused != 'true'
+      with:
+        repository: OrchidDB/OrchidDB
+        ref: ${{ needs.metadata.outputs.core }}
+        path: orchiddb
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - uses: dtolnay/rust-toolchain@1.93.1
+      if: steps.reuse.outputs.reused != 'true'
+    - uses: Swatinem/rust-cache@v2
+      if: steps.reuse.outputs.reused != 'true'
+      with:
+        workspaces: orchiddb-java/native
+        shared-key: release-java-${{ matrix.platform }}
+        cache-on-failure: true
+    - name: Build compiler without DuckDB
+      if: steps.reuse.outputs.reused != 'true'
+      run: |
+        cargo +1.93.1 build --manifest-path native/Cargo.toml --locked --release
+        cargo +1.93.1 tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
+        if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi
+    - name: Package compiler JAR
+      if: steps.reuse.outputs.reused != 'true'
+      run: |
+        python scripts/package-native.py --platform "$PLATFORM" --library "native/target/release/$LIBRARY" --version "$VERSION" --output "target/native-artifacts/$PLATFORM.jar"
+        git rev-parse HEAD > target/native-artifacts/SOURCE_COMMIT
+    - uses: actions/upload-artifact@v4
+      with:
+        name: native-${{ matrix.platform }}
+        path: orchiddb-java/target/native-artifacts/*
+        if-no-files-found: error
+        retention-days: 30
+        overwrite: true
+    timeout-minutes: 90
   stage:
-    needs: [metadata, native]
+    needs:
+    - metadata
+    - native
     runs-on: ubuntu-22.04
     environment: maven-central
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.metadata.outputs.commit }}
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          server-id: central
-          server-username: CENTRAL_USERNAME
-          server-password: CENTRAL_PASSWORD
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: native-*
-          path: target/native-artifacts
-          merge-multiple: true
-      - name: Verify all native artifacts match this release
-        env:
-          VERSION: ${{ needs.metadata.outputs.version }}
-        run: python scripts/verify-native-artifacts.py --version "$VERSION"
-      - name: Import signing key
-        env:
-          GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-        run: |
-          test -n "$GPG_PRIVATE_KEY"
-          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
-      - name: Sign and upload for Central review
-        env:
-          CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
-          CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: |
-          test -n "$CENTRAL_USERNAME" && test -n "$CENTRAL_PASSWORD"
-          mvn -B -Pgremlin,native-release,central -DskipTests deploy
-      - name: Save signed release bundle
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: central-release-bundle
-          path: '**/target/central-publishing/*.zip'
-          if-no-files-found: warn
-      - name: Record next step
-        run: echo 'Release uploaded for validation. Review and publish it at https://central.sonatype.com/publishing/deployments.' >> "$GITHUB_STEP_SUMMARY"
+    - uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.metadata.outputs.commit }}
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+        server-id: central
+        server-username: CENTRAL_USERNAME
+        server-password: CENTRAL_PASSWORD
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: native-*
+        path: target/native-artifacts
+        merge-multiple: true
+    - name: Verify all native artifacts match this release
+      env:
+        VERSION: ${{ needs.metadata.outputs.version }}
+      run: python scripts/verify-native-artifacts.py --version "$VERSION"
+    - name: Import signing key
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+      run: |
+        test -n "$GPG_PRIVATE_KEY"
+        printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+    - name: Sign and upload for Central review
+      env:
+        CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
+        CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
+        MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      run: |
+        test -n "$CENTRAL_USERNAME" && test -n "$CENTRAL_PASSWORD"
+        mvn -B -Pgremlin,native-release,central -DskipTests -Dcentral.autoPublish=${{ inputs.publish }} deploy
+    - name: Save signed release bundle
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: central-release-bundle
+        path: '**/target/central-publishing/*.zip'
+        if-no-files-found: warn
+    - name: Record next step
+      run: echo 'Central deployment ID and publication state are recorded in the Maven output.' >> "$GITHUB_STEP_SUMMARY"
+    if: inputs.stage && inputs.platform == 'all'
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Immutable version tag to build
+        required: true
+        type: string
+      platform:
+        description: Build only this platform; completed platforms are retained
+        type: choice
+        default: all
+        options:
+        - all
+        - linux-x86_64
+        - macos-aarch64
+        - macos-x86_64
+        - windows-x86_64
+      request_id:
+        description: Coordinator id for safe resume and dispatch recovery
+        type: string
+        default: ''
+      reuse_runs:
+        description: Platform to completed build run ID JSON map
+        type: string
+        default: '{}'
+      stage:
+        description: Sign and stage all classifiers after builds complete
+        type: boolean
+        default: false
+      publish:
+        description: Publish the validated Central deployment automatically
+        type: boolean
+        default: false
+run-name: java ${{ inputs.request_id }} ${{ inputs.tag }} ${{ inputs.platform }}

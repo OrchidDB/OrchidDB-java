@@ -1,7 +1,4 @@
 name: Java bindings
-on:
-  push:
-  pull_request:
 concurrency:
   group: java-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -13,35 +10,38 @@ jobs:
     env:
       CARGO_BUILD_JOBS: 2
     steps:
-      - uses: actions/checkout@v4
-        with:
-          path: orchiddb-java
-      - name: Read compiler revision
-        id: core
-        shell: bash
-        run: echo "revision=$(cat orchiddb-java/native/CORE_REVISION)" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        with:
-          repository: OrchidDB/OrchidDB
-          ref: ${{ steps.core.outputs.revision }}
-          path: orchiddb
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-          cache: maven
-          cache-dependency-path: |
-            orchiddb-java/pom.xml
-            orchiddb-java/orchiddb-java/pom.xml
-            orchiddb-java/orchiddb-gremlin/pom.xml
-      - name: Install Rust
-        run: rustup toolchain install 1.93.1 --profile minimal && rustup default 1.93.1
-      - name: Build Java API and native compiler
-        working-directory: orchiddb-java
-        run: ./scripts/build-gremlin.sh -DskipTests
-      - name: Ensure compiler does not link DuckDB
-        working-directory: orchiddb-java
-        shell: bash
-        run: |
-          cargo tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
-          if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi
+    - uses: actions/checkout@v4
+      with:
+        path: orchiddb-java
+    - name: Read compiler revision
+      id: core
+      shell: bash
+      run: echo "revision=$(cat orchiddb-java/native/CORE_REVISION)" >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v4
+      with:
+        repository: OrchidDB/OrchidDB
+        ref: ${{ steps.core.outputs.revision }}
+        path: orchiddb
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+        cache: maven
+        cache-dependency-path: |
+          orchiddb-java/pom.xml
+          orchiddb-java/orchiddb-java/pom.xml
+          orchiddb-java/orchiddb-gremlin/pom.xml
+    - name: Install Rust
+      run: rustup toolchain install 1.93.1 --profile minimal && rustup default 1.93.1
+    - name: Build Java API and native compiler
+      working-directory: orchiddb-java
+      run: ./scripts/build-gremlin.sh -DskipTests
+    - name: Ensure compiler does not link DuckDB
+      working-directory: orchiddb-java
+      shell: bash
+      run: |
+        cargo tree --manifest-path native/Cargo.toml --locked --prefix none > native-dependencies.txt
+        if grep -E '^(duckdb|libduckdb-sys) ' native-dependencies.txt; then exit 1; fi
+on:
+  pull_request: {}
+  workflow_dispatch: {}

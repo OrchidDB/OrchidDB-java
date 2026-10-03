@@ -28,7 +28,7 @@ def package(platform, library, version, output):
         prefix + 'build.properties': (
             f'version={version}\ncoreRevision={revision}\n'
             f'sha256={hashlib.sha256(data).hexdigest()}\n').encode(),
-        'META-INF/LICENSE.md': (ROOT / 'LICENSE.md').read_bytes(),
+        'META-INF/LICENSE.md': (ROOT / 'LICENSE.md').read_text(encoding='utf-8').encode('utf-8'),
         'META-INF/MANIFEST.MF': b'Manifest-Version: 1.0\r\n\r\n',
     }
     output.parent.mkdir(parents=True, exist_ok=True)
