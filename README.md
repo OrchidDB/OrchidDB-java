@@ -154,13 +154,13 @@ Cypher parameters are bound into the parsed AST as typed literals, with SQL esca
 
 Schema types: `boolean`, `int8`, `int16`, `int32`, `int64`, `float32`, `float64`, `string`, `binary`, `date`, `timestamp` (microseconds without timezone), and `decimal:precision:scale` (precision 1–38). Unsigned integers, nanosecond or zoned timestamps, arrays/structs and extension-specific source types require a cast/view in this first JDBC adapter. Unsupported types fail explicitly.
 
-## Multiple engines and future federation
+## Multiple engines and federation
 
 [MultipleEngines.java](orchiddb-java/src/test/java/io/orchiddb/examples/MultipleEngines.java) registers two independent engines and routes each graph to its named source. Engine IDs are part of every source mapping and compiled plan. Plans cannot be executed through a mismatched engine/dialect.
 
 `SqlCompiler`, `ExecutionEngine`, and `ExecutionEngine.Session` are separate interfaces. JDBC is one execution adapter; a future ClickHouse HTTP adapter can implement the session interface without exposing a JDBC connection. Dialect identity is separate from transport. The native compiler renders DuckDB and PostgreSQL SQL. Live JDBC integration checks exercise both engines, including mixed execution through `FederatedQuery.query`. Set `ORCHIDDB_TEST_PG_JDBC` to enable the PostgreSQL checks. ClickHouse compilation is explicitly unsupported today.
 
-Cross-engine graphs fail before a connection is acquired. Future federation needs a coordinator that partitions Graph IR by source/capabilities, sends each fragment to its dialect compiler, and handles exchanges, joins, cancellation, and transaction boundaries. The source IDs and engine sessions provide those integration points without pretending a single engine can execute another engine's tables.
+Use `FederatedQuery.query` for mixed-engine requests. It coordinates SQL islands through caller-owned JDBC sessions, with typed values passed to the target engine. Applications retain connection and transaction ownership.
 
 ## Implementation references
 

@@ -13,8 +13,14 @@ public record Query(
   public Query(String language, String text, Map<String, Object> parameters, Ontology ontology) {
     this(language, text, parameters, ontology, List.of(), "default", null);
   }
-  public Query(String language, String text, Map<String, Object> parameters, Ontology ontology,
-               List<Map<String, Object>> rdf, String dataset) {
+
+  public Query(
+      String language,
+      String text,
+      Map<String, Object> parameters,
+      Ontology ontology,
+      List<Map<String, Object>> rdf,
+      String dataset) {
     this(language, text, parameters, ontology, rdf, dataset, null);
   }
 
@@ -66,7 +72,8 @@ public record Query(
   }
 
   public Query as(Authorization principal) {
-    return new Query(language, text, parameters, ontology, rdf, dataset, Objects.requireNonNull(principal));
+    return new Query(
+        language, text, parameters, ontology, rdf, dataset, Objects.requireNonNull(principal));
   }
 
   public static Query gremlin(String text) {

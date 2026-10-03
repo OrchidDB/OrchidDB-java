@@ -63,23 +63,30 @@ class FederatedQueryTest {
       }
       try (var s = pg.createStatement()) {
         s.execute("CREATE TEMP TABLE nested_values(id BIGINT, items JSONB[])");
-        s.execute("INSERT INTO nested_values VALUES (1, ARRAY['[1]'::jsonb,'[2,3]'::jsonb,NULL,'[]'::jsonb])");
+        s.execute(
+            "INSERT INTO nested_values VALUES (1, ARRAY['[1]'::jsonb,'[2,3]'::jsonb,NULL,'[]'::jsonb])");
       }
       try (var s = duck.createStatement()) {
         s.execute("CREATE TEMP TABLE nested_values(id BIGINT, items BIGINT[][])");
         s.execute("INSERT INTO nested_values VALUES (1, [[1],[2,3],NULL,[]])");
       }
       for (String target : List.of("p", "d")) {
-        var request = json.readTree("""
+        var request =
+            json.readTree(
+                """
             {"version":1,"language":"cypher","query":"MATCH (n:Nested) RETURN ncount(n.items) AS n",
              "engines":{"d":{"dialect":"duckdb"},"p":{"dialect":"postgres"}},
              "tables":[{"name":"nested_values","columns":[{"name":"id","data_type":"int64"},{"name":"items","data_type":"list:list:int64"}]}],
              "nodes":[{"label":"Nested","table":"nested_values","id":"id","properties":{"items":"items"}}],
              "functions":[{"name":"ncount","parameters":["list:list:int64"],"returns":"int64"}]}
             """);
-        ((com.fasterxml.jackson.databind.node.ObjectNode) request).put("execution_engine",target).put("dialect",target.equals("p") ? "postgres" : "duckdb");
-        ((com.fasterxml.jackson.databind.node.ObjectNode) request.get("tables").get(0)).put("engine",target.equals("p") ? "d" : "p");
-        ((com.fasterxml.jackson.databind.node.ObjectNode) request.get("functions").get(0)).put("target",target.equals("p") ? "cardinality" : "len");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) request)
+            .put("execution_engine", target)
+            .put("dialect", target.equals("p") ? "postgres" : "duckdb");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) request.get("tables").get(0))
+            .put("engine", target.equals("p") ? "d" : "p");
+        ((com.fasterxml.jackson.databind.node.ObjectNode) request.get("functions").get(0))
+            .put("target", target.equals("p") ? "cardinality" : "len");
         try (var rows = FederatedQuery.query(compiler, request.toString(), engines)) {
           assertTrue(rows.next());
           assertEquals(4, ((Number) rows.get(1)).longValue());

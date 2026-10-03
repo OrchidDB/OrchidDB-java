@@ -147,16 +147,25 @@ public final class FederatedQuery {
     if (value instanceof byte[] bytes) return Base64.getEncoder().encodeToString(bytes);
     if (value instanceof java.sql.Array array) {
       try {
-        if (array.getBaseTypeName().equalsIgnoreCase("jsonb") || array.getBaseTypeName().equalsIgnoreCase("json")) {
-          var json = new ObjectMapper()
-              .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
-              .enable(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_INTEGER_FOR_INTS);
+        if (array.getBaseTypeName().equalsIgnoreCase("jsonb")
+            || array.getBaseTypeName().equalsIgnoreCase("json")) {
+          var json =
+              new ObjectMapper()
+                  .enable(
+                      com.fasterxml.jackson.databind.DeserializationFeature
+                          .USE_BIG_DECIMAL_FOR_FLOATS)
+                  .enable(
+                      com.fasterxml.jackson.databind.DeserializationFeature
+                          .USE_BIG_INTEGER_FOR_INTS);
           var items = array.getArray();
           var decoded = new ArrayList<Object>();
           for (int i = 0; i < java.lang.reflect.Array.getLength(items); i++) {
             var item = java.lang.reflect.Array.get(items, i);
-            try { decoded.add(item == null ? null : json.readValue(item.toString(), Object.class)); }
-            catch (java.io.IOException e) { throw new SQLException("Invalid JSON array cell", e); }
+            try {
+              decoded.add(item == null ? null : json.readValue(item.toString(), Object.class));
+            } catch (java.io.IOException e) {
+              throw new SQLException("Invalid JSON array cell", e);
+            }
           }
           return jsonValue(decoded);
         }

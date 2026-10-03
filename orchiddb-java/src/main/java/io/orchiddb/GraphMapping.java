@@ -24,7 +24,8 @@ public record GraphMapping(List<NodeMapping> nodes, List<EdgeMapping> edges) {
     var sources = new LinkedHashSet<Source>();
     nodes.forEach(n -> sources.add(n.source()));
     edges.forEach(e -> sources.add(e.source()));
-    nodes.stream().flatMap(n -> n.permissionScopes().stream())
+    nodes.stream()
+        .flatMap(n -> n.permissionScopes().stream())
         .forEach(scope -> sources.add(scope.relation().source()));
     return Collections.unmodifiableSet(sources);
   }

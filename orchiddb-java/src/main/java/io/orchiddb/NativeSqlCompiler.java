@@ -51,8 +51,9 @@ public final class NativeSqlCompiler implements SqlCompiler {
     request.put("ontology", r.query().ontology());
     if (r.query().authorization() != null) {
       var principal = r.query().authorization();
-      request.put("authorization", Map.of("subject_type", principal.subjectType(),
-          "subject_id", principal.subjectId()));
+      request.put(
+          "authorization",
+          Map.of("subject_type", principal.subjectType(), "subject_id", principal.subjectId()));
     }
     if (!r.query().rdf().isEmpty()) request.put("rdf", r.query().rdf());
     if (!r.query().dataset().equals("default")) request.put("dataset", r.query().dataset());
@@ -79,31 +80,57 @@ public final class NativeSqlCompiler implements SqlCompiler {
             .toList());
     if (r.mapping().nodes().stream().anyMatch(n -> !n.permissionScopes().isEmpty())
         && r.query().authorization() == null)
-      throw new PlanningException("Query requires a principal because the graph contains protected node mappings");
-    request.put("nodes", r.mapping().nodes().stream().map(n -> {
-      String table = n.source().sql(r.dialect());
-      var node = new LinkedHashMap<String, Object>();
-      node.put("label", n.label());
-      node.put("table", table);
-      node.put("id", n.id());
-      node.put("properties", n.properties());
-      if (!n.permissionScopes().isEmpty())
-        node.put("permission_scopes", n.permissionScopes().stream().map(scope -> {
-          var p = scope.relation();
-          if (!p.source().engine().equals(r.engine()))
-            throw new PlanningException("Permission relation is bound to a different engine");
-          return Map.of("resource_column", scope.resourceColumn(), "relation", Map.of(
-              "table", p.source().sql(r.dialect()),
-              "resource_type", p.resourceType(), "permission", p.permission(),
-              "resource_type_column", p.resourceTypeColumn(),
-              "permission_column", p.permissionColumn(),
-              "resource_id_column", p.resourceIdColumn(),
-              "subject_type_column", p.subjectTypeColumn(),
-              "subject_relation_column", p.subjectRelationColumn(),
-              "subject_id_column", p.subjectIdColumn()));
-        }).toList());
-      return node;
-    }).toList());
+      throw new PlanningException(
+          "Query requires a principal because the graph contains protected node mappings");
+    request.put(
+        "nodes",
+        r.mapping().nodes().stream()
+            .map(
+                n -> {
+                  String table = n.source().sql(r.dialect());
+                  var node = new LinkedHashMap<String, Object>();
+                  node.put("label", n.label());
+                  node.put("table", table);
+                  node.put("id", n.id());
+                  node.put("properties", n.properties());
+                  if (!n.permissionScopes().isEmpty())
+                    node.put(
+                        "permission_scopes",
+                        n.permissionScopes().stream()
+                            .map(
+                                scope -> {
+                                  var p = scope.relation();
+                                  if (!p.source().engine().equals(r.engine()))
+                                    throw new PlanningException(
+                                        "Permission relation is bound to a different engine");
+                                  return Map.of(
+                                      "resource_column",
+                                      scope.resourceColumn(),
+                                      "relation",
+                                      Map.of(
+                                          "table",
+                                          p.source().sql(r.dialect()),
+                                          "resource_type",
+                                          p.resourceType(),
+                                          "permission",
+                                          p.permission(),
+                                          "resource_type_column",
+                                          p.resourceTypeColumn(),
+                                          "permission_column",
+                                          p.permissionColumn(),
+                                          "resource_id_column",
+                                          p.resourceIdColumn(),
+                                          "subject_type_column",
+                                          p.subjectTypeColumn(),
+                                          "subject_relation_column",
+                                          p.subjectRelationColumn(),
+                                          "subject_id_column",
+                                          p.subjectIdColumn()));
+                                })
+                            .toList());
+                  return node;
+                })
+            .toList());
     request.put(
         "edges",
         r.mapping().edges().stream()

@@ -2,17 +2,31 @@ package io.orchiddb;
 
 import java.util.*;
 
-public record NodeMapping(String label, Source source, String id, Map<String, String> properties,
-                          List<PermissionScope> permissionScopes) {
+public record NodeMapping(
+    String label,
+    Source source,
+    String id,
+    Map<String, String> properties,
+    List<PermissionScope> permissionScopes) {
   public NodeMapping(String label, Source source, String id, Map<String, String> properties) {
     this(label, source, id, properties, List.of());
   }
+
   /** Compatibility constructor: protect by matching the node identity column. */
-  public NodeMapping(String label, Source source, String id, Map<String, String> properties,
+  public NodeMapping(
+      String label,
+      Source source,
+      String id,
+      Map<String, String> properties,
       PermissionRelation permission) {
-    this(label, source, id, properties,
+    this(
+        label,
+        source,
+        id,
+        properties,
         permission == null ? List.of() : List.of(new PermissionScope(id, permission)));
   }
+
   public NodeMapping {
     Checks.name(label);
     Objects.requireNonNull(source);

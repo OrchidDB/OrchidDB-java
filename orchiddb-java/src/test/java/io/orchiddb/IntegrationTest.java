@@ -82,73 +82,115 @@ class IntegrationTest {
   @Test
   void permissionMembershipFiltersAtNodeSourceAndDeduplicatesGrants() throws Exception {
     try (var statement = connection.createStatement()) {
-      statement.execute("CREATE TEMP TABLE grants(resource_type VARCHAR, resource_rel VARCHAR, resource_id VARCHAR, subject_type VARCHAR, subject_rel VARCHAR, subject_id VARCHAR)");
-      statement.execute("INSERT INTO grants VALUES "
-          + "('document','view','1','user','','alice'), "
-          + "('document','view','1','user','','alice'), "
-          + "('document','view','2','user','','bob'), "
-          + "('document','view','2','user','member','alice'), "
-          + "('document','edit','3','user','','alice'), "
-          + "('document','view','3','user','','alice'), "
-          + "('document','view','03','user','','alice')");
+      statement.execute(
+          "CREATE TEMP TABLE grants(resource_type VARCHAR, resource_rel VARCHAR, resource_id VARCHAR, subject_type VARCHAR, subject_rel VARCHAR, subject_id VARCHAR)");
+      statement.execute(
+          "INSERT INTO grants VALUES "
+              + "('document','view','1','user','','alice'), "
+              + "('document','view','1','user','','alice'), "
+              + "('document','view','2','user','','bob'), "
+              + "('document','view','2','user','member','alice'), "
+              + "('document','edit','3','user','','alice'), "
+              + "('document','view','3','user','','alice'), "
+              + "('document','view','03','user','','alice')");
     }
     var grants = PermissionRelation.flat(Source.table("lake", "grants"), "document", "view");
-    var protectedMapping = new GraphMapping(
-        List.of(NodeMapping.node("Person", PEOPLE, "id")
-            .property("id", "id").protectWith(grants)), List.of());
-    var protectedGraph = new OrchidDB(compiler, PlanCache.none(),
-        JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection)).graph(protectedMapping);
-    var query = Query.cypher("MATCH (p:Person) RETURN p.id AS id ORDER BY id")
-        .as(new Authorization("user", "alice"));
+    var protectedMapping =
+        new GraphMapping(
+            List.of(
+                NodeMapping.node("Person", PEOPLE, "id").property("id", "id").protectWith(grants)),
+            List.of());
+    var protectedGraph =
+        new OrchidDB(
+                compiler,
+                PlanCache.none(),
+                JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection))
+            .graph(protectedMapping);
+    var query =
+        Query.cypher("MATCH (p:Person) RETURN p.id AS id ORDER BY id")
+            .as(new Authorization("user", "alice"));
     assertEquals(List.of(1L, 3L), values(protectedGraph.query(query)));
-    assertThrows(PlanningException.class,
+    assertThrows(
+        PlanningException.class,
         () -> protectedGraph.plan(Query.cypher("MATCH (p:Person) RETURN p.id")));
   }
 
   @Test
   void permissionScopesCombineDirectAndCoarseResourceGrants() throws Exception {
     try (var statement = connection.createStatement()) {
-      statement.execute("CREATE TEMP TABLE scoped_docs(id BIGINT, project_id BIGINT, title VARCHAR)");
-      statement.execute("INSERT INTO scoped_docs VALUES (1, 10, 'direct'), (2, 20, 'project'), (3, 30, 'denied')");
-      statement.execute("CREATE TEMP TABLE scoped_grants(resource_type VARCHAR, resource_rel VARCHAR, resource_id VARCHAR, subject_type VARCHAR, subject_rel VARCHAR, subject_id VARCHAR)");
-      statement.execute("INSERT INTO scoped_grants VALUES "
-          + "('document','view','1','user','','alice'), "
-          + "('document','view','2','user','','alice'), "
-          + "('project','view','20','user','','alice'), "
-          + "('project','view','10','user','','alice'), "
-          + "('project','view','30','user','','bob')");
+      statement.execute(
+          "CREATE TEMP TABLE scoped_docs(id BIGINT, project_id BIGINT, title VARCHAR)");
+      statement.execute(
+          "INSERT INTO scoped_docs VALUES (1, 10, 'direct'), (2, 20, 'project'), (3, 30, 'denied')");
+      statement.execute(
+          "CREATE TEMP TABLE scoped_grants(resource_type VARCHAR, resource_rel VARCHAR, resource_id VARCHAR, subject_type VARCHAR, subject_rel VARCHAR, subject_id VARCHAR)");
+      statement.execute(
+          "INSERT INTO scoped_grants VALUES "
+              + "('document','view','1','user','','alice'), "
+              + "('document','view','2','user','','alice'), "
+              + "('project','view','20','user','','alice'), "
+              + "('project','view','10','user','','alice'), "
+              + "('project','view','30','user','','bob')");
     }
     var direct = PermissionRelation.flat(Source.table("lake", "scoped_grants"), "document", "view");
     var project = PermissionRelation.flat(Source.table("lake", "scoped_grants"), "project", "view");
-    var mapping = new GraphMapping(List.of(
-        NodeMapping.node("Document", Source.table("lake", "scoped_docs"), "id")
-            .property("id", "id").property("title", "title")
-            .property("project_id", "project_id")
-            .protectWith(direct).protectWith("project_id", project)), List.of());
-    var protectedGraph = new OrchidDB(compiler, PlanCache.none(),
-        JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection)).graph(mapping);
-    var query = Query.cypher("MATCH (d:Document) RETURN d.title AS title ORDER BY title")
-        .as(new Authorization("user", "alice"));
+    var mapping =
+        new GraphMapping(
+            List.of(
+                NodeMapping.node("Document", Source.table("lake", "scoped_docs"), "id")
+                    .property("id", "id")
+                    .property("title", "title")
+                    .property("project_id", "project_id")
+                    .protectWith(direct)
+                    .protectWith("project_id", project)),
+            List.of());
+    var protectedGraph =
+        new OrchidDB(
+                compiler,
+                PlanCache.none(),
+                JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection))
+            .graph(mapping);
+    var query =
+        Query.cypher("MATCH (d:Document) RETURN d.title AS title ORDER BY title")
+            .as(new Authorization("user", "alice"));
     assertEquals(List.of("direct", "project"), values(protectedGraph.query(query)));
   }
 
   @Test
   void permissionRelationSupportsCallerDefinedColumnNames() throws Exception {
     try (var statement = connection.createStatement()) {
-      statement.execute("CREATE TEMP TABLE custom_grants(object_kind VARCHAR, action_name VARCHAR, object_key VARCHAR, principal_kind VARCHAR, via VARCHAR, principal_key VARCHAR)");
-      statement.execute("INSERT INTO custom_grants VALUES "
-          + "('person','read','1','account','','alice'), "
-          + "('person','read','2','account','','bob')");
+      statement.execute(
+          "CREATE TEMP TABLE custom_grants(object_kind VARCHAR, action_name VARCHAR, object_key VARCHAR, principal_kind VARCHAR, via VARCHAR, principal_key VARCHAR)");
+      statement.execute(
+          "INSERT INTO custom_grants VALUES "
+              + "('person','read','1','account','','alice'), "
+              + "('person','read','2','account','','bob')");
     }
-    var grants = PermissionRelation.flat(Source.table("lake", "custom_grants"),
-        "person", "read", "object_kind", "action_name", "object_key",
-        "principal_kind", "via", "principal_key");
-    var mapping = new GraphMapping(List.of(NodeMapping.node("Person", PEOPLE, "id")
-        .property("id", "id").protectWith(grants)), List.of());
-    var protectedGraph = new OrchidDB(compiler, PlanCache.none(),
-        JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection)).graph(mapping);
-    var query = Query.cypher("MATCH (p:Person) RETURN p.id AS id ORDER BY id")
-        .as(new Authorization("account", "alice"));
+    var grants =
+        PermissionRelation.flat(
+            Source.table("lake", "custom_grants"),
+            "person",
+            "read",
+            "object_kind",
+            "action_name",
+            "object_key",
+            "principal_kind",
+            "via",
+            "principal_key");
+    var mapping =
+        new GraphMapping(
+            List.of(
+                NodeMapping.node("Person", PEOPLE, "id").property("id", "id").protectWith(grants)),
+            List.of());
+    var protectedGraph =
+        new OrchidDB(
+                compiler,
+                PlanCache.none(),
+                JdbcEngine.borrowed("lake", SqlDialect.DUCKDB, connection))
+            .graph(mapping);
+    var query =
+        Query.cypher("MATCH (p:Person) RETURN p.id AS id ORDER BY id")
+            .as(new Authorization("account", "alice"));
     assertEquals(List.of(1L), values(protectedGraph.query(query)));
   }
 
